@@ -1,0 +1,591 @@
+# Python
+# ======
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+# ===================
+venv/
+ENV/
+env/
+.venv
+.ENV
+.env
+
+# Environment Variables & Secrets
+# ================================
+# 보안 가이드라인: 환경 변수 및 시크릿 파일은 절대 커밋하지 않음
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+*.key
+*.pem
+*.p12
+secrets/
+.secrets/
+
+# IDE & Editors
+# =============
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+# ================
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Node.js / Frontend
+# ==================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Next.js
+# =======
+.next/
+out/
+build/
+dist/
+.vercel
+.turbo
+
+# TypeScript
+# ==========
+*.tsbuildinfo
+next-env.d.ts
+
+# Testing
+# =======
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+.cache
+nosetests.xml
+coverage.xml
+*.log
+
+# Database
+# ========
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Logs
+# ====
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# OS
+# ==
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Docker
+# ======
+.dockerignore
+
+# Temporary files
+# ===============
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# Selenium / WebDriver
+# ====================
+chromedriver
+geckodriver
+*.exe
+webdriver/
+
+# Data files (큰 파일)
+# ===================
+*.csv
+*.xlsx
+*.xls
+*.pdf
+!requirements.txt
+!package.json
+
+# Model files (큰 파일)
+# =====================
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.onnx
+*.pb
+
+# Media files (큰 파일)
+# ====================
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mkv
+
+# Archives
+# ========
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Project specific
+# ================
+# Lab 관련 파일 (선택적)
+lab1_basic_agent/fixedbychatgpt/
+lab1_basic_agent/__pycache__/
+agent/fixedbychatgpt/
+agent/__pycache__/
+
+# Session files
+session*.docx
+*.docx
+!README.md
+
+# History folder (선택적 - 필요시 주석 해제)
+# History/
+
+# Backup files
+# ============
+*.backup
+*.old
+*_backup
+*_old
+
+# Coverage reports
+# ================
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# mypy
+# ====
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+# =================
+.pyre/
+
+# pytype static type analyzer
+# ===========================
+.pytype/
+
+# Celery
+# ======
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+# =====================
+*.sage.py
+
+# Spyder project settings
+# =======================
+.spyderproject
+.spyproject
+
+# Rope project settings
+# =====================
+.ropeproject
+
+# mkdocs documentation
+# ====================
+/site
+
+# mkdocs documentation
+# ====================
+/site
+
+# PyCharm
+# =======
+.idea/
+
+# VS Code
+# =======
+.vscode/
+*.code-workspace
+
+# Local History for Visual Studio Code
+# =====================================
+.history/
+
+# Built Visual Studio Code Extensions
+# ===================================
+*.vsix
+
+# MacOS
+# =====
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+# =======
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+# =====
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# JetBrains IDEs
+# ==============
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Vim
+# ===
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Sessionx.vim
+.netrwhist
+tags
+[._]*.un~
+
+# Emacs
+# =====
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Project specific ignores
+# ========================
+# AI Agent 프로젝트 특정 파일들
+
+# Streamlit
+.streamlit/
+
+# Jupyter
+.jupyter/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Weights & Biases
+wandb/
+
+# TensorBoard
+runs/
+*.tfevents.*
+
+# Google Colab
+.colab/
+
+# Kaggle
+.kaggle/
+
+# Paperspace
+.paperspace/
+
+# Python type stubs
+# =================
+*.pyi
+
+# Compiled files
+# ==============
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Package files
+# =============
+*.whl
+*.egg
+
+# Distribution / packaging
+# =========================
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Unit test / coverage reports
+# ============================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+# ============
+*.mo
+*.pot
+
+# Django stuff:
+# =============
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+# ============
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+# =============
+.scrapy
+
+# Sphinx documentation
+# ===================
+docs/_build/
+
+# PyBuilder
+# =========
+target/
+
+# Jupyter Notebook
+# =================
+.ipynb_checkpoints
+
+# IPython
+# =======
+profile_default/
+ipython_config.py
+
+# pyenv
+# =====
+.python-version
+
+# pipenv
+# ======
+Pipfile.lock
+
+# PEP 582
+# =======
+__pypackages__/
+
+# Celery stuff
+# ============
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+# =====================
+*.sage.py
+
+# Environments
+# =============
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+# =======================
+.spyderproject
+.spyproject
+
+# Rope project settings
+# =====================
+.ropeproject
+
+# mkdocs documentation
+# ====================
+/site
+
+# mypy
+# ====
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+# =================
+.pyre/
+
+# pytype static type analyzer
+# ===========================
+.pytype/
+
+# Cython debug symbols
+# =====================
+cython_debug/
+
+# IDEs
+# ====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+# ==
+.DS_Store
+Thumbs.db
+
+# Project specific
+# ================
+# 보안: API 키 및 시크릿 파일
+*.key
+*.pem
+*.p12
+secrets/
+.secrets/
+
+# 데이터베이스 백업
+*.sql.backup
+*.db.backup
+
+# 로그 파일
+logs/
+*.log
+
+# 임시 파일
+tmp/
+temp/
+*.tmp
+*.temp
+
+# 빌드 산출물
+build/
+dist/
+*.egg-info/
+
+# 테스트 결과
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 노트북 체크포인트
+.ipynb_checkpoints
+
+# 환경 변수 (중요: 절대 커밋하지 않음)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
