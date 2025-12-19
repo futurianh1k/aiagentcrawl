@@ -34,6 +34,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # 애플리케이션 코드 복사
 COPY app/ ./app/
+# 주의: common과 agent는 docker-compose.yml의 volumes로 마운트됩니다
 
 # 앱 사용자로 전환
 USER appuser

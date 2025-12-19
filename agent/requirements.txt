@@ -1,11 +1,27 @@
-# Lab 1: Basic Agent Requirements
+# Agent Requirements
 
 # Core LangChain
 langchain>=0.1.0
 langchain-openai>=0.0.5
 
+# Web Scraping
+selenium>=4.15.0
+webdriver-manager>=4.0.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# AI/ML
+openai>=1.0.0
+google-generativeai>=0.3.0
+
 # Environment
 python-dotenv>=1.0.0
 
-# GUI (선택사항)
-streamlit>=1.28.0
+# Async support
+aiohttp>=3.9.0
+
+# Data processing
+pandas>=2.0.0
+
+# Utilities
+python-dateutil>=2.8.0

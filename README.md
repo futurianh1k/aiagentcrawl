@@ -10,7 +10,7 @@ AI Agent 기반 뉴스 감정 분석 시스템 - 4일차 강의용 완전한 소
 
 - **🤖 AI Agent 기반 분석**: LangChain ReAct 패턴으로 구현된 멀티 에이전트 시스템
 - **📊 실시간 감정 분석**: OpenAI API를 활용한 뉴스 기사 및 댓글 감정 분석
-- **🔍 지능형 뉴스 수집**: Mock 뉴스 스크래퍼를 통한 키워드 기반 기사 수집
+- **🔍 지능형 뉴스 수집**: 네이버 뉴스와 구글 뉴스 크롤링 지원
 - **📈 데이터 시각화**: Recharts를 활용한 감정 분포 및 키워드 클라우드
 - **🚀 확장 가능한 아키텍처**: 마이크로서비스 아키텍처 및 컨테이너화
 - **⚡ 고성능 처리**: 비동기 처리 및 Redis 캐싱
@@ -32,6 +32,12 @@ AI Agent 기반 뉴스 감정 분석 시스템 - 4일차 강의용 완전한 소
 - **Recharts** 2.8.0 - 데이터 시각화
 - **Axios** 1.6.2 - HTTP 클라이언트
 
+#### Agent
+- **Python 3.11** - Agent 실행 환경
+- **Selenium** - 웹 크롤링 (네이버/구글 뉴스)
+- **LangChain** - AI Agent 프레임워크
+- **OpenAI/Gemini** - 감성 분석
+
 #### DevOps
 - **Docker** & **Docker Compose** - 컨테이너화
 - **GitHub Actions** - CI/CD 파이프라인
@@ -51,7 +57,7 @@ AI Agent 기반 뉴스 감정 분석 시스템 - 4일차 강의용 완전한 소
 ```bash
 # 프로젝트 클론
 git clone <repository-url>
-cd news-sentiment-system
+cd aiagent
 
 # 환경 변수 설정
 cp .env.example .env
@@ -76,7 +82,7 @@ SECRET_KEY=your-super-secret-key-change-this-in-production
 ### 4. Docker Compose로 전체 스택 실행
 
 ```bash
-# 전체 스택 시작 (MySQL, Redis, Backend, Frontend)
+# 전체 스택 시작 (MySQL, Redis, Agent, Backend, Frontend)
 docker-compose up -d
 
 # 로그 확인
@@ -91,53 +97,38 @@ docker-compose ps
 - **프론트엔드**: http://localhost:3000
 - **백엔드 API**: http://localhost:8000
 - **API 문서**: http://localhost:8000/docs
+- **Agent 서비스**: http://localhost:8001
 
 ## 📁 프로젝트 구조
 
 ```
-news-sentiment-system/
-├── backend/                      # FastAPI 백엔드
-│   ├── app/
-│   │   ├── main.py              # FastAPI 엔트리포인트
-│   │   ├── api/
-│   │   │   ├── routes/
-│   │   │   │   ├── agents.py    # Agent 엔드포인트
-│   │   │   │   └── analysis.py  # 분석 결과 조회
-│   │   │   └── dependencies.py  # 의존성 주입
-│   │   ├── models/              # SQLAlchemy 모델
-│   │   │   └── database.py
-│   │   ├── schemas/             # Pydantic 스키마
-│   │   │   └── requests.py
-│   │   ├── services/            # 비즈니스 로직
-│   │   │   └── agent_service.py # Agent 통합
-│   │   └── core/
-│   │       ├── config.py        # 설정
-│   │       └── database.py      # DB 연결
-│   ├── requirements.txt
+aiagent/
+├── agent/                      # Python Agent
+│   ├── news_agent.py          # News Analysis Agent
+│   ├── server.py              # Agent HTTP 서버
+│   ├── tools/                 # Agent Tools
+│   │   ├── news_scraper/     # 뉴스 크롤링 Tool (네이버/구글)
+│   │   └── data_analyzer/    # 감성 분석 Tool
 │   └── Dockerfile
-├── frontend/                     # Next.js 프론트엔드
+├── backend/                    # FastAPI 백엔드
 │   ├── app/
-│   │   ├── layout.tsx           # Root layout
-│   │   ├── page.tsx             # Home page
-│   │   └── analyze/
-│   │       └── page.tsx         # Analysis page
-│   ├── components/
-│   │   ├── SearchForm.tsx
-│   │   ├── SentimentChart.tsx
-│   │   ├── KeywordCloud.tsx
-│   │   └── ArticleList.tsx
-│   ├── lib/
-│   │   └── api.ts               # API client
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── tailwind.config.js
+│   │   ├── main.py           # FastAPI 엔트리포인트
+│   │   ├── api/routes/       # API 라우터
+│   │   ├── services/         # 비즈니스 로직
+│   │   └── core/            # 설정 및 DB
 │   └── Dockerfile
-├── docker-compose.yml           # 전체 스택 오케스트레이션
-├── .env.example                 # 환경 변수 템플릿
-├── .github/
-│   └── workflows/
-│       └── deploy.yml           # CI/CD 파이프라인
-└── README.md
+├── frontend/                   # Next.js 프론트엔드
+│   ├── app/                  # Next.js App Router
+│   ├── components/           # React 컴포넌트
+│   └── Dockerfile
+├── common/                     # 공통 모듈
+│   ├── config.py            # 설정 관리
+│   ├── models.py            # 공통 데이터 모델
+│   ├── utils.py             # 유틸리티 함수
+│   └── security.py          # 보안 관련 함수
+├── docker-compose.yml         # 전체 스택 오케스트레이션
+├── .env.example              # 환경 변수 템플릿
+└── README.md                 # 이 문서
 ```
 
 ## 🔧 개발 환경 설정
@@ -178,6 +169,16 @@ npm run build
 
 # 프로덕션 실행
 npm start
+```
+
+### Agent 로컬 개발
+
+```bash
+# Agent 테스트
+python -m agent.news_agent
+
+# Agent 서버 실행
+python -m agent.server
 ```
 
 ## 🧪 테스트
@@ -225,9 +226,9 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ### Agent 구성요소
 
 1. **NewsScrapingAgent**: 뉴스 기사 수집
-   - 키워드 기반 검색
-   - 다양한 뉴스 소스 지원
-   - 중복 제거 및 필터링
+   - 네이버 뉴스 크롤링
+   - 구글 뉴스 크롤링
+   - 소스 선택 기능
 
 2. **SentimentAnalysisAgent**: 감정 분석
    - OpenAI GPT 모델 활용
@@ -243,12 +244,12 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 ```python
 # Agent 실행 플로우 예시
-async def analyze_news(keyword: str):
+async def analyze_news(keyword: str, sources: List[str]):
     # 1. Reasoning: 분석 계획 수립
-    plan = await agent.reason(f"Analyze news about '{keyword}'")
+    plan = await agent.reason(f"Analyze news about '{keyword}' from {sources}")
 
     # 2. Action: 뉴스 수집
-    articles = await news_agent.scrape(keyword)
+    articles = await news_agent.scrape(keyword, sources)
 
     # 3. Observation: 결과 관찰
     results = await sentiment_agent.analyze(articles)
@@ -267,7 +268,7 @@ async def analyze_news(keyword: str):
 ```json
 {
   "keyword": "인공지능",
-  "sources": ["네이버", "다음"],
+  "sources": ["네이버", "구글"],
   "max_articles": 50
 }
 ```
@@ -278,7 +279,40 @@ async def analyze_news(keyword: str):
 #### GET /api/analysis/sessions
 분석 세션 목록 조회
 
+#### Agent 서비스 엔드포인트
+
+- `GET /health`: Agent 헬스체크
+- `POST /analyze`: 뉴스 분석 실행
+- `POST /analyze-sentiment`: 자연어 질의 분석
+
 자세한 API 문서는 http://localhost:8000/docs 에서 확인하세요.
+
+## 🔒 보안 가이드라인
+
+이 프로젝트는 한국 개인정보보호법 및 ISMS-P 수준의 보안 가이드라인을 따릅니다.
+
+### 주요 보안 사항
+
+1. **API 키 관리**
+   - 환경 변수에서만 읽기
+   - 로그에 절대 노출하지 않음
+   - .env 파일을 .gitignore에 추가
+
+2. **입력 검증**
+   - 모든 사용자 입력 검증
+   - SQL Injection 방지
+   - XSS 방지
+
+3. **크롤링**
+   - robots.txt 준수
+   - Rate Limit 준수
+   - User-Agent 설정
+
+4. **에러 처리**
+   - 민감한 정보를 에러 메시지에 포함하지 않음
+   - 일반화된 에러 메시지 제공
+
+자세한 내용은 `PROJECT_REVIEW.md`를 참조하세요.
 
 ## 🤝 기여 방법
 
@@ -305,10 +339,14 @@ async def analyze_news(keyword: str):
    - 환경 변수의 데이터베이스 정보 확인
 
 3. **포트 충돌**
-   - 3000, 8000, 3306 포트 사용 여부 확인
+   - 3000, 8000, 8001, 3306 포트 사용 여부 확인
    - `docker-compose.yml`에서 포트 변경 가능
 
-4. **메모리 부족**
+4. **Agent 서비스 오류**
+   - Chrome 브라우저 설치 확인
+   - Agent 로그 확인: `docker-compose logs agent`
+
+5. **메모리 부족**
    - Docker Desktop 메모리 할당 증가
    - 불필요한 컨테이너 정리
 
@@ -321,8 +359,17 @@ docker-compose logs
 # 특정 서비스 로그
 docker-compose logs backend
 docker-compose logs frontend
+docker-compose logs agent
 docker-compose logs mysql
 ```
+
+## 📚 문서
+
+- [QUICK_START.md](QUICK_START.md): 빠른 시작 가이드
+- [DOCKER_SETUP.md](DOCKER_SETUP.md): 상세한 Docker 설정 가이드
+- [PROJECT_REVIEW.md](PROJECT_REVIEW.md): 프로젝트 구조 및 리팩토링 계획
+- [AGENT_REFACTORING_SUMMARY.md](AGENT_REFACTORING_SUMMARY.md): Agent 리팩토링 요약
+- [agent/README.md](agent/README.md): Agent 사용 가이드
 
 ## 📞 지원
 

@@ -7,17 +7,17 @@ services:
     container_name: news-sentiment-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-news_sentiment}
+      MYSQL_USER: ${MYSQL_USER:-newsuser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-newspass123}
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      - ./setup_database/04_database_setup.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "3306:3306"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword123}"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -30,7 +30,7 @@ services:
     image: redis:7-alpine
     container_name: news-sentiment-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    command: redis-server --appendonly yes ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     ports:
@@ -43,6 +43,34 @@ services:
     networks:
       - news-network
 
+  # Agent 서비스 (Python Agent)
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    container_name: news-sentiment-agent
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./agent:/app/agent:ro
+      - ./common:/app/common:ro
+      - agent_logs:/app/logs
+    ports:
+      - "8001:8001"
+    networks:
+      - news-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # FastAPI 백엔드
   backend:
     build:
@@ -51,11 +79,15 @@ services:
     container_name: news-sentiment-backend
     restart: unless-stopped
     environment:
-      - DATABASE_URL=mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - DATABASE_URL=mysql+pymysql://${MYSQL_USER:-newsuser}:${MYSQL_PASSWORD:-newspass123}@mysql:3306/${MYSQL_DATABASE:-news_sentiment}
+      - REDIS_URL=redis://${REDIS_PASSWORD:+(:$REDIS_PASSWORD)@}redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - SECRET_KEY=${SECRET_KEY}
-      - DEBUG=${DEBUG}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - DEBUG=${DEBUG:-false}
+      - PYTHONPATH=/app
+      - AGENT_SERVICE_URL=http://agent:8001
     ports:
       - "8000:8000"
     depends_on:
@@ -63,8 +95,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      agent:
+        condition: service_healthy
     volumes:
-      - ./backend/logs:/app/logs
+      - ./backend/app:/app/app:ro
+      - ./common:/app/common:ro
+      - ./agent:/app/agent:ro
+      - backend_logs:/app/logs
     networks:
       - news-network
     healthcheck:
@@ -82,7 +119,7 @@ services:
     container_name: news-sentiment-frontend
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://backend:8000
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
       - NODE_ENV=production
     ports:
       - "3000:3000"
@@ -96,6 +133,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
   # Nginx 리버스 프록시 (선택사항)
   nginx:
@@ -113,11 +151,17 @@ services:
       - backend
     networks:
       - news-network
+    profiles:
+      - nginx
 
 volumes:
   mysql_data:
     driver: local
   redis_data:
+    driver: local
+  backend_logs:
+    driver: local
+  agent_logs:
     driver: local
 
 networks:
