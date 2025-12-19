@@ -1,0 +1,11 @@
+# Lab 1: Basic Agent Requirements
+
+# Core LangChain
+langchain>=0.1.0
+langchain-openai>=0.0.5
+
+# Environment
+python-dotenv>=1.0.0
+
+# GUI (선택사항)
+streamlit>=1.28.0

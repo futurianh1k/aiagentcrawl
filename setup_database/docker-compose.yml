@@ -1,0 +1,60 @@
+# Docker Compose (MySQL + Crawler)
+#
+# 서비스 구성:
+#  - db: MySQL 8.0 컨테이너 (데이터는 로컬 볼륨에 저장)
+#  - crawler: 빌드된 크롤러 이미지(Playwright 기반). DB 컨테이너가 정상인 경우에만 실행됩니다.
+#
+# 주의:
+# - 기본 비밀번호(rootpass / crawler_pass)는 데모용입니다. 실제 사용 시 반드시 변경하세요.
+# - 환경 변수는 compose 파일에서 오버라이드하거나 .env 파일을 사용하여 관리할 수 있습니다.
+
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: crawler_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: shopping_crawler
+      MYSQL_USER: crawler
+      MYSQL_PASSWORD: crawler_pass
+    ports:
+      - "3306:3306" # 호스트에서 접근 가능하게 노출 (원치 않으면 제거)
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  crawler:
+    build: .
+    container_name: naver_crawler
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # DB 연결 정보 (컨테이너 내부에서 db 호스트로 접근)
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_USER: crawler
+      MYSQL_PASSWORD: crawler_pass
+      MYSQL_DATABASE: shopping_crawler
+      # 크롤링 파라미터 (오버라이드 가능)
+      SEARCH_QUERY: "노트북"
+      PAGES: 3
+      MAX_ITEMS: 100
+      OUTPUT: "/data/results.csv"
+      HEADLESS: "true"
+    volumes:
+      - ./crawler:/app/crawler:ro
+      - ./data:/data
+    # 기본 명령은 env 변수를 사용하여 크롤러를 실행
+    command: ["/bin/sh", "-c", "node crawler/naver_shopping_crawler.js --query \"${SEARCH_QUERY}\" --pages ${PAGES} --output ${OUTPUT} --maxItems ${MAX_ITEMS} --auto-yes"]
+
+volumes:
+  db_data:
+

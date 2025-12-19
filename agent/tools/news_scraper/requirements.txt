@@ -1,0 +1,100 @@
+# 2회차 강의: AI 에이전트 기반 뉴스 감성 분석 시스템
+# Playwright 기반 크롤링 파이프라인 의존성 패키지
+
+# 웹 크롤링 및 브라우저 자동화
+playwright>=1.40.0
+firecrawl-py>=0.0.10
+
+# 데이터 검증 및 설정 관리
+pydantic>=2.5.0
+python-dotenv>=1.0.0
+
+# 데이터베이스 ORM 및 드라이버
+sqlalchemy>=2.0.0
+mysql-connector-python>=8.2.0
+pymysql>=1.1.0
+
+# 비동기 HTTP 클라이언트
+aiohttp>=3.9.0
+requests>=2.31.0
+
+# 재시도 전략 및 백오프
+tenacity>=8.2.3
+
+# 테스트 프레임워크
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+pytest-mock>=3.12.0
+
+# 로깅 및 디버깅
+structlog>=23.2.0
+colorama>=0.4.6
+
+# 성능 모니터링
+memory-profiler>=0.61.0
+psutil>=5.9.6
+
+# 데이터 처리
+pandas>=2.1.4
+numpy>=1.25.2
+
+# 자연어 처리 (키워드 추출용)
+nltk>=3.8.1
+konlpy>=0.6.0
+
+# 감성 분석 (선택적)
+transformers>=4.35.0
+torch>=2.1.0
+
+# 유틸리티
+tqdm>=4.66.1
+click>=8.1.7
+rich>=13.7.0
+
+# 개발 도구 (개발 환경용)
+black>=23.11.0
+isort>=5.12.0
+flake8>=6.1.0
+mypy>=1.7.0
+
+# Jupyter 노트북 (분석용)
+jupyter>=1.0.0
+matplotlib>=3.8.2
+seaborn>=0.13.0
+
+# 설정 파일 처리
+pyyaml>=6.0.1
+toml>=0.10.2
+
+# 압축 및 파일 처리
+zipfile36>=0.1.3
+
+# 날짜/시간 처리
+python-dateutil>=2.8.2
+pytz>=2023.3
+
+# 암호화 및 보안
+cryptography>=41.0.8
+bcrypt>=4.1.2
+
+# API 클라이언트
+httpx>=0.25.2
+websockets>=12.0
+
+# 스케줄링
+apscheduler>=3.10.4
+
+# 환경변수 및 설정 검증
+environs>=10.3.0
+
+# 로깅 확장
+loguru>=0.7.2
+
+# 멀티프로세싱 유틸리티
+multiprocess>=0.70.15
+
+# 시스템 모니터링
+gputil>=1.4.0
+
+# CSV 처리 최적화
+csvkit>=1.1.1

@@ -1,0 +1,8 @@
+body{font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;line-height:1.4;background:#f6f8fb;color:#111;margin:0;padding:20px}
+main{max-width:800px;margin:20px auto;background:#fff;padding:24px;border-radius:8px;box-shadow:0 4px 20px rgba(16,24,40,.06)}
+h1{margin-top:0}
+textarea{width:100%;padding:12px;border:1px solid #ddd;border-radius:6px;font-size:14px}
+.controls{margin-top:8px}
+button{padding:8px 12px;margin-right:8px;border-radius:6px;border:0;background:#0b5cff;color:#fff}
+pre{background:#f3f4f6;padding:12px;border-radius:6px;white-space:pre-wrap}
+footer{margin-top:12px;color:#666}

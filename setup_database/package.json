@@ -1,0 +1,20 @@
+{
+  "name": "mysql_setup_guide",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "crawl:naver": "node crawler/naver_shopping_crawler.js",
+    "import:csv": "node crawler/import_csv_to_mysql.js --file ./data/naver_shopping_results.csv",
+    "install:playwright": "npx playwright install chromium",
+    "compose:up": "docker-compose up --build",
+    "test:smoke": "node crawler/smoke_test.js"
+  },
+  "dependencies": {
+    "csv-writer": "^1.6.0",
+    "csv-parser": "^3.0.0",
+    "dotenv": "^16.0.0",
+    "minimist": "^1.2.8",
+    "mysql2": "^3.2.0",
+    "playwright": "^1.39.0"
+  }
+}

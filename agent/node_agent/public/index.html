@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Calculator Planner Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>🧮 Calculator Planner Agent</h1>
+      <p>수식 계산 또는 뉴스 감성 분석(예: "삼성전자 뉴스 여론 분석해줘")을 입력하세요.</p>
+
+      <textarea id="query" placeholder="예: ((2 + 3) * 4) / 2" rows="3"></textarea>
+      <div class="controls">
+        <button id="submit">실행</button>
+        <button id="clear">지우기</button>
+      </div>
+
+      <section id="result">
+        <h2>결과</h2>
+        <pre id="out">(결과가 여기에 표시됩니다)</pre>
+      </section>
+
+      <footer>
+        <small>Planner: 서버의 플래너(LLM 기반 또는 룰 기반)을 사용합니다.</small>
+      </footer>
+    </main>
+
+    <script src="/main.js"></script>
+  </body>
+</html>

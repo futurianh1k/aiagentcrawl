@@ -1,0 +1,12 @@
+# Lab 3: Data Analyzer Requirements
+
+# Core LangChain
+langchain>=0.1.0
+
+# AI/ML
+openai>=1.0.0
+google-generativeai>=0.3.0
+
+# Environment
+python-dotenv>=1.0.0
+

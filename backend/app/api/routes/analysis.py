@@ -1,0 +1,140 @@
+"""
+분석 결과 라우터
+저장된 분석 결과 조회 엔드포인트
+"""
+
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from app.api.dependencies import get_database_session
+from app.schemas.requests import AnalysisResponse, SessionListResponse
+from app.models.database import AnalysisSession, Article, Comment, Keyword
+
+router = APIRouter()
+
+@router.get("/{session_id}", response_model=AnalysisResponse)
+async def get_analysis_result(
+    session_id: int,
+    db: Session = Depends(get_database_session)
+):
+    """분석 결과 조회"""
+
+    # 세션 조회
+    session = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="분석 세션을 찾을 수 없습니다")
+
+    # 기사 조회
+    articles = db.query(Article).filter(Article.session_id == session_id).all()
+    articles_data = []
+
+    for article in articles:
+        # 댓글 수 계산
+        comment_count = db.query(Comment).filter(Comment.article_id == article.id).count()
+
+        articles_data.append({
+            "id": article.id,
+            "title": article.title,
+            "content": article.content,
+            "url": article.url,
+            "source": article.source,
+            "published_at": article.published_at,
+            "sentiment_score": article.sentiment_score,
+            "sentiment_label": article.sentiment_label,
+            "confidence": article.confidence,
+            "comment_count": comment_count
+        })
+
+    # 키워드 조회
+    keywords = db.query(Keyword).filter(Keyword.session_id == session_id).all()
+    keywords_data = [
+        {
+            "keyword": keyword.keyword,
+            "frequency": keyword.frequency,
+            "sentiment_score": keyword.sentiment_score
+        }
+        for keyword in keywords
+    ]
+
+    # 감정 분포 계산
+    sentiment_distribution = {"positive": 0, "negative": 0, "neutral": 0}
+    for article in articles:
+        label = article.sentiment_label or "neutral"
+        sentiment_distribution[label] = sentiment_distribution.get(label, 0) + 1
+
+    return AnalysisResponse(
+        session_id=session.id,
+        keyword=session.keyword,
+        status=session.status,
+        total_articles=len(articles_data),
+        sentiment_distribution=sentiment_distribution,
+        keywords=keywords_data,
+        articles=articles_data,
+        created_at=session.created_at,
+        completed_at=session.completed_at
+    )
+
+@router.get("/sessions", response_model=SessionListResponse)
+async def get_analysis_sessions(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(10, ge=1, le=100),
+    keyword: Optional[str] = Query(None),
+    db: Session = Depends(get_database_session)
+):
+    """분석 세션 목록 조회"""
+
+    # 쿼리 구성
+    query = db.query(AnalysisSession)
+
+    if keyword:
+        query = query.filter(AnalysisSession.keyword.contains(keyword))
+
+    # 전체 개수
+    total = query.count()
+
+    # 페이지네이션
+    offset = (page - 1) * per_page
+    sessions = query.order_by(AnalysisSession.created_at.desc()).offset(offset).limit(per_page).all()
+
+    sessions_data = []
+    for session in sessions:
+        article_count = db.query(Article).filter(Article.session_id == session.id).count()
+
+        sessions_data.append({
+            "id": session.id,
+            "keyword": session.keyword,
+            "status": session.status,
+            "article_count": article_count,
+            "created_at": session.created_at,
+            "completed_at": session.completed_at
+        })
+
+    return SessionListResponse(
+        sessions=sessions_data,
+        total=total,
+        page=page,
+        per_page=per_page
+    )
+
+@router.delete("/{session_id}")
+async def delete_analysis_session(
+    session_id: int,
+    db: Session = Depends(get_database_session)
+):
+    """분석 세션 삭제"""
+
+    session = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="분석 세션을 찾을 수 없습니다")
+
+    # 관련 데이터 삭제 (CASCADE로 자동 삭제되지만 명시적으로 처리)
+    db.query(Comment).filter(Comment.article_id.in_(
+        db.query(Article.id).filter(Article.session_id == session_id)
+    )).delete(synchronize_session=False)
+
+    db.query(Article).filter(Article.session_id == session_id).delete()
+    db.query(Keyword).filter(Keyword.session_id == session_id).delete()
+    db.delete(session)
+    db.commit()
+
+    return {"message": "분석 세션이 삭제되었습니다"}

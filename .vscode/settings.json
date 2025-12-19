@@ -1,0 +1,30 @@
+{
+  // Keep Jira project setting if used by other extensions
+  "jira-plugin.workingProject": "",
+
+  // Use the workspace virtual environment as the default interpreter
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+
+  // Enable automatic activation of the Python environment in new terminals
+  "python.terminal.activateEnvironment": true,
+
+  // Ensure PowerShell integrated terminal runs Activate.ps1 on launch for this workspace.
+  // This runs the venv activation script when a PowerShell terminal is started inside VS Code.
+  "terminal.integrated.profiles.windows": {
+    "PowerShell (activate .venv)": {
+      "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoExit",
+        "-Command",
+        "& '${workspaceFolder}\\.venv\\Scripts\\Activate.ps1'"
+      ]
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell (activate .venv)",
+
+  // Helpful env in the terminal (optional)
+  "terminal.integrated.env.windows": {
+    "VIRTUAL_ENV": "${workspaceFolder}\\.venv",
+    "PYTHONPATH": "${workspaceFolder}"
+  }
+}
