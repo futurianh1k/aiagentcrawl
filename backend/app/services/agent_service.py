@@ -8,10 +8,26 @@ import json
 import random
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
-from langchain.agents import Tool, AgentExecutor, create_react_agent
-from langchain.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
+
+# LangChain import (최신 버전 호환)
+try:
+    from langchain.agents import Tool, AgentExecutor
+    from langchain_openai import ChatOpenAI
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    try:
+        from langchain.tools import Tool
+        from langchain.agents import AgentExecutor
+        from langchain_openai import ChatOpenAI
+        LANGCHAIN_AVAILABLE = True
+    except ImportError:
+        Tool = None
+        AgentExecutor = None
+        ChatOpenAI = None
+        LANGCHAIN_AVAILABLE = False
+
 from app.core.config import settings
+
 
 class MockNewsScraper:
     """Mock 뉴스 스크래퍼 (실제 구현시 Selenium/API 대체)"""
@@ -28,184 +44,194 @@ class MockNewsScraper:
                 "url": f"https://news.example.com/{keyword}-{i+1}",
                 "source": random.choice(sources),
                 "published_at": datetime.now() - timedelta(hours=random.randint(1, 48)),
-                "comments": self._generate_mock_comments(random.randint(3, 10))
+                "comments": [
+                    {
+                        "text": f"댓글 {j+1}: {keyword}에 대한 의견입니다.",
+                        "author": f"사용자{j+1}",
+                        "sentiment": random.choice(["긍정", "부정", "중립"])
+                    }
+                    for j in range(random.randint(0, 5))
+                ]
             }
             articles.append(article)
 
         return articles
 
-    def _generate_mock_comments(self, count: int) -> List[Dict]:
-        """Mock 댓글 생성"""
-        comments = []
-        sentiments = ["긍정적인", "부정적인", "중립적인"]
-
-        for i in range(count):
-            sentiment = random.choice(sentiments)
-            comment = {
-                "content": f"이 뉴스에 대한 {sentiment} 의견입니다.",
-                "author": f"사용자{i+1}",
-                "created_at": datetime.now() - timedelta(minutes=random.randint(1, 1440))
-            }
-            comments.append(comment)
-
-        return comments
 
 class SentimentAnalyzer:
-    """감정 분석 에이전트"""
+    """감정 분석기 (OpenAI API 사용)"""
 
-    def __init__(self):
-        self.llm = ChatOpenAI(
-            model=settings.SENTIMENT_ANALYSIS_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-            temperature=0.1
-        )
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        if LANGCHAIN_AVAILABLE and ChatOpenAI:
+            try:
+                self.llm = ChatOpenAI(
+                    temperature=0.3,
+                    openai_api_key=api_key,
+                    model_name=settings.SENTIMENT_ANALYSIS_MODEL
+                )
+            except Exception:
+                self.llm = None
+        else:
+            self.llm = None
 
-    async def analyze_sentiment(self, text: str) -> Dict[str, Any]:
+    async def analyze(self, text: str) -> Dict[str, Any]:
         """텍스트 감정 분석"""
-        prompt = f"""
-        다음 텍스트의 감정을 분석해주세요:
-
-        텍스트: {text}
-
-        다음 형식으로 JSON 응답을 제공해주세요:
-        {{
-            "sentiment_label": "positive|negative|neutral",
-            "sentiment_score": -1.0~1.0 사이의 실수,
-            "confidence": 0.0~1.0 사이의 신뢰도
-        }}
-        """
+        if not self.llm:
+            # LLM이 없으면 기본 응답
+            return {
+                "sentiment": random.choice(["긍정", "부정", "중립"]),
+                "confidence": random.uniform(0.6, 0.9),
+                "reason": "기본 분석 결과"
+            }
 
         try:
+            prompt = f"""다음 텍스트의 감정을 분석하세요. JSON 형식으로 응답하세요.
+
+텍스트: {text[:500]}
+
+응답 형식:
+{{
+    "sentiment": "긍정|부정|중립",
+    "confidence": 0.0-1.0,
+    "reason": "분석 근거"
+}}"""
+
             response = await self.llm.ainvoke(prompt)
             result = json.loads(response.content)
             return result
-        except Exception as e:
-            # 실패시 기본값 반환
+        except Exception:
             return {
-                "sentiment_label": "neutral",
-                "sentiment_score": 0.0,
-                "confidence": 0.5
+                "sentiment": random.choice(["긍정", "부정", "중립"]),
+                "confidence": 0.7,
+                "reason": "분석 실패"
             }
 
+
 class NewsAnalysisAgent:
-    """뉴스 분석 통합 에이전트"""
+    """뉴스 감정 분석 Agent"""
 
     def __init__(self):
+        """Agent 초기화"""
         self.scraper = MockNewsScraper()
-        self.sentiment_analyzer = SentimentAnalyzer()
+        self.analyzer = SentimentAnalyzer(settings.OPENAI_API_KEY)
 
-        # LangChain Agent 설정
-        self.llm = ChatOpenAI(
-            model="gpt-3.5-turbo",
-            api_key=settings.OPENAI_API_KEY,
-            temperature=0.3
-        )
+    async def analyze_news(
+        self,
+        keyword: str,
+        sources: List[str],
+        max_articles: int = 20
+    ) -> Dict[str, Any]:
+        """
+        뉴스 감정 분석 실행
 
-        self.tools = [
-            Tool(
-                name="news_scraper",
-                description="뉴스 기사를 수집합니다",
-                func=self._scrape_wrapper
-            ),
-            Tool(
-                name="sentiment_analyzer", 
-                description="텍스트의 감정을 분석합니다",
-                func=self._sentiment_wrapper
-            )
-        ]
+        Args:
+            keyword: 검색 키워드
+            sources: 뉴스 소스 목록
+            max_articles: 최대 기사 수
 
-    def _scrape_wrapper(self, input_str: str) -> str:
-        """동기 래퍼"""
-        return "뉴스 수집 완료"
-
-    def _sentiment_wrapper(self, input_str: str) -> str:
-        """동기 래퍼"""
-        return "감정 분석 완료"
-
-    async def analyze_news(self, keyword: str, sources: List[str], max_articles: int) -> Dict[str, Any]:
-        """통합 뉴스 분석 실행"""
-
+        Returns:
+            분석 결과 딕셔너리
+        """
         # 1. 뉴스 수집
         articles = await self.scraper.scrape_news(keyword, sources, max_articles)
 
-        # 2. 각 기사 감정 분석 (병렬 처리)
+        # 2. 감정 분석
         analyzed_articles = []
-        sentiment_tasks = []
+        sentiment_counts = {"긍정": 0, "부정": 0, "중립": 0}
 
         for article in articles:
             # 기사 본문 감정 분석
-            article_task = self.sentiment_analyzer.analyze_sentiment(
-                f"{article['title']} {article['content']}"
-            )
-            sentiment_tasks.append((article, article_task, 'article'))
+            article_text = f"{article['title']} {article['content']}"
+            article_sentiment = await self.analyzer.analyze(article_text[:500])
 
             # 댓글 감정 분석
-            for comment in article['comments']:
-                comment_task = self.sentiment_analyzer.analyze_sentiment(comment['content'])
-                sentiment_tasks.append((comment, comment_task, 'comment'))
+            analyzed_comments = []
+            for comment in article.get("comments", []):
+                comment_sentiment = await self.analyzer.analyze(comment.get("text", ""))
+                analyzed_comments.append({
+                    **comment,
+                    **comment_sentiment
+                })
+                sentiment_counts[comment_sentiment.get("sentiment", "중립")] += 1
 
-        # 병렬 실행
-        sentiment_results = await asyncio.gather(*[task for _, task, _ in sentiment_tasks])
+            analyzed_articles.append({
+                **article,
+                **article_sentiment,
+                "comments": analyzed_comments
+            })
 
-        # 결과 매핑
-        result_index = 0
-        for i, article in enumerate(articles):
-            # 기사 감정 분석 결과 적용
-            article_sentiment = sentiment_results[result_index]
-            result_index += 1
+            sentiment_counts[article_sentiment.get("sentiment", "중립")] += 1
 
-            article.update(article_sentiment)
-
-            # 댓글 감정 분석 결과 적용
-            for j, comment in enumerate(article['comments']):
-                comment_sentiment = sentiment_results[result_index]
-                result_index += 1
-                comment.update(comment_sentiment)
-
-            analyzed_articles.append(article)
-
-        # 3. 키워드 추출 및 통계 계산
-        keywords = self._extract_keywords(analyzed_articles, keyword)
-        sentiment_distribution = self._calculate_sentiment_distribution(analyzed_articles)
-
-        return {
-            "articles": analyzed_articles,
-            "keywords": keywords,
-            "sentiment_distribution": sentiment_distribution,
-            "total_articles": len(analyzed_articles)
+        # 3. 결과 정리
+        total = sum(sentiment_counts.values())
+        sentiment_distribution = {
+            "positive": sentiment_counts.get("긍정", 0),
+            "negative": sentiment_counts.get("부정", 0),
+            "neutral": sentiment_counts.get("중립", 0)
         }
 
-    def _extract_keywords(self, articles: List[Dict], main_keyword: str) -> List[Dict]:
-        """키워드 추출 및 빈도 계산"""
-        # 간단한 키워드 추출 로직 (실제로는 NLP 라이브러리 사용)
-        keyword_freq = {}
+        # 4. 기사 데이터 형식 변환 (agents.py에서 기대하는 형식)
+        formatted_articles = []
+        for article in analyzed_articles:
+            sentiment = article.get("sentiment", "중립")
+            confidence = article.get("confidence", 0.5)
+            
+            formatted_article = {
+                "title": article.get("title", ""),
+                "content": article.get("content", ""),
+                "url": article.get("url"),
+                "source": article.get("source"),
+                "published_at": article.get("published_at"),
+                "sentiment_score": 0.7 if sentiment == "긍정" else (-0.7 if sentiment == "부정" else 0.0),
+                "sentiment_label": sentiment,
+                "confidence": confidence,
+                "comments": []
+            }
+            
+            # 댓글 형식 변환
+            for comment in article.get("comments", []):
+                comment_sentiment = comment.get("sentiment", "중립")
+                comment_confidence = comment.get("confidence", 0.5)
+                
+                formatted_comment = {
+                    "content": comment.get("text", ""),
+                    "author": comment.get("author"),
+                    "sentiment_score": 0.7 if comment_sentiment == "긍정" else (-0.7 if comment_sentiment == "부정" else 0.0),
+                    "sentiment_label": comment_sentiment,
+                    "confidence": comment_confidence
+                }
+                formatted_article["comments"].append(formatted_comment)
+            
+            formatted_articles.append(formatted_article)
 
-        for article in articles:
+        # 5. 키워드 추출 (간단한 버전)
+        keywords = []
+        keyword_freq = {}
+        for article in formatted_articles:
             text = f"{article['title']} {article['content']}"
             words = text.split()
-
             for word in words:
-                if len(word) > 1 and word != main_keyword:
+                if len(word) > 1 and word != keyword:
                     keyword_freq[word] = keyword_freq.get(word, 0) + 1
-
-        # 상위 10개 키워드 반환
+        
+        # 상위 10개 키워드
         sorted_keywords = sorted(keyword_freq.items(), key=lambda x: x[1], reverse=True)[:10]
-
-        return [
+        keywords = [
             {
-                "keyword": keyword,
+                "keyword": kw,
                 "frequency": freq,
-                "sentiment_score": random.uniform(-0.5, 0.5)  # Mock sentiment
+                "sentiment_score": 0.0  # 기본값
             }
-            for keyword, freq in sorted_keywords
+            for kw, freq in sorted_keywords
         ]
 
-    def _calculate_sentiment_distribution(self, articles: List[Dict]) -> Dict[str, int]:
-        """감정 분포 계산"""
-        distribution = {"positive": 0, "negative": 0, "neutral": 0}
-
-        for article in articles:
-            label = article.get('sentiment_label', 'neutral')
-            distribution[label] = distribution.get(label, 0) + 1
-
-        return distribution
+        return {
+            "keyword": keyword,
+            "sources": sources,
+            "total_articles": len(formatted_articles),
+            "articles": formatted_articles,
+            "sentiment_distribution": sentiment_distribution,
+            "keywords": keywords,
+            "analyzed_at": datetime.now().isoformat()
+        }

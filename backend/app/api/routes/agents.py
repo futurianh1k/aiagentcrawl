@@ -126,6 +126,12 @@ async def analyze_news(
         session.status = "failed"
         db.commit()
 
+        # 에러 로깅 (상세 정보)
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"ERROR in analyze_news: {str(e)}")
+        print(f"Traceback: {error_detail}")
+
         raise HTTPException(
             status_code=500,
             detail=f"뉴스 분석 중 오류가 발생했습니다: {str(e)}"

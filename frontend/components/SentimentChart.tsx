@@ -66,8 +66,8 @@ export default function SentimentChart({ data }: SentimentChartProps) {
             height={36}
             iconType="circle"
             formatter={(value, entry) => (
-              <span style={{ color: entry.color }}>
-                {value} ({entry.payload.value}개)
+              <span style={{ color: entry?.color }}>
+                {value} ({entry?.payload?.value ?? 0}개)
               </span>
             )}
           />

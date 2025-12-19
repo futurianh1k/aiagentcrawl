@@ -7,6 +7,7 @@ Agent를 독립적인 서비스로 실행하기 위한 간단한 HTTP 서버
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from typing import Dict, Any, List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,10 +17,35 @@ from common.config import get_config
 from common.utils import safe_log, validate_input
 from .news_agent import NewsAnalysisAgent
 
+# Agent 인스턴스 (전역)
+agent_instance: NewsAnalysisAgent = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """애플리케이션 생명주기 관리 (startup/shutdown)"""
+    # Startup
+    global agent_instance
+    try:
+        config = get_config()
+        agent_instance = NewsAnalysisAgent(config.get_openai_key())
+        safe_log("Agent 서비스 시작", level="info")
+    except Exception as e:
+        safe_log("Agent 초기화 실패 (계속 진행)", level="warning", error=str(e))
+        # Agent 초기화 실패해도 서버는 시작 (analyze_news_async는 작동 가능)
+        agent_instance = None
+    
+    yield
+    
+    # Shutdown (필요시 정리 작업)
+    safe_log("Agent 서비스 종료", level="info")
+
+
 app = FastAPI(
     title="News Analysis Agent Service",
     description="뉴스 분석 Agent 서비스 API",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS 설정
@@ -31,9 +57,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Agent 인스턴스 (전역)
-agent_instance: NewsAnalysisAgent = None
-
 
 class AnalyzeRequest(BaseModel):
     """분석 요청 모델"""
@@ -42,26 +65,14 @@ class AnalyzeRequest(BaseModel):
     max_articles: int = 10
 
 
-@app.on_event("startup")
-async def startup_event():
-    """서버 시작 시 Agent 초기화"""
-    global agent_instance
-    try:
-        config = get_config()
-        agent_instance = NewsAnalysisAgent(config.get_openai_key())
-        safe_log("Agent 서비스 시작", level="info")
-    except Exception as e:
-        safe_log("Agent 초기화 실패", level="error", error=str(e))
-        raise
-
-
 @app.get("/health")
 async def health_check():
     """헬스체크"""
     return {
         "status": "healthy",
         "service": "agent",
-        "agent_initialized": agent_instance is not None
+        "agent_initialized": agent_instance is not None,
+        "langchain_available": agent_instance.agent is not None if agent_instance else False
     }
 
 

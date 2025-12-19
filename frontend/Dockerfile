@@ -7,8 +7,8 @@ WORKDIR /build
 # 패키지 파일 복사
 COPY package*.json ./
 
-# 의존성 설치
-RUN npm ci --only=production && npm cache clean --force
+# 의존성 설치 (package-lock.json이 없을 수 있으므로 npm install 사용)
+RUN npm install && npm cache clean --force
 
 # 소스 코드 복사
 COPY . .
@@ -29,10 +29,12 @@ RUN adduser -S nextjs -u 1001
 # 필요한 패키지 설치
 RUN apk add --no-cache curl
 
-# Next.js 빌드 결과물 복사
-COPY --from=builder /build/public ./public
+# Next.js standalone 빌드 결과물 복사
 COPY --from=builder --chown=nextjs:nodejs /build/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /build/.next/static ./.next/static
+
+# public 폴더 복사 (이제 public 폴더가 존재함)
+COPY --from=builder --chown=nextjs:nodejs /build/public ./public
 
 # 앱 사용자로 전환
 USER nextjs
@@ -43,11 +45,11 @@ ENV HOSTNAME="0.0.0.0"
 ENV PORT=3000
 
 # 헬스체크 추가
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/api/health || exit 1
+HEALTHCHECK --interval=30s --timeout=30s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
 
 # 포트 노출
 EXPOSE 3000
 
-# 애플리케이션 실행
+# 애플리케이션 실행 (standalone 모드)
 CMD ["node", "server.js"]

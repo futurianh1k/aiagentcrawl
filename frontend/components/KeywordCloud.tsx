@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface KeywordCloudProps {
   data: Array<{
@@ -82,7 +82,6 @@ export default function KeywordCloud({ data }: KeywordCloudProps) {
           <Tooltip content={<CustomTooltip />} />
           <Bar 
             dataKey="frequency" 
-            fill={(entry) => getBarColor(entry?.sentiment)}
             radius={[2, 2, 0, 0]}
           >
             {sortedData.map((entry, index) => (

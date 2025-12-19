@@ -138,3 +138,74 @@ async def delete_analysis_session(
     db.commit()
 
     return {"message": "분석 세션이 삭제되었습니다"}
+
+@router.get("/stats/summary")
+async def get_statistics_summary(
+    db: Session = Depends(get_database_session)
+):
+    """전체 통계 요약"""
+    
+    # 전체 세션 수
+    total_sessions = db.query(AnalysisSession).count()
+    completed_sessions = db.query(AnalysisSession).filter(AnalysisSession.status == "completed").count()
+    processing_sessions = db.query(AnalysisSession).filter(AnalysisSession.status == "processing").count()
+    failed_sessions = db.query(AnalysisSession).filter(AnalysisSession.status == "failed").count()
+    
+    # 전체 기사 수
+    total_articles = db.query(Article).count()
+    
+    # 전체 댓글 수
+    total_comments = db.query(Comment).count()
+    
+    # 전체 키워드 수
+    total_keywords = db.query(Keyword).count()
+    
+    # 감정 분포
+    sentiment_stats = db.query(
+        Article.sentiment_label,
+        db.func.count(Article.id).label('count')
+    ).group_by(Article.sentiment_label).all()
+    
+    sentiment_distribution = {"positive": 0, "negative": 0, "neutral": 0}
+    for label, count in sentiment_stats:
+        if label:
+            # 한국어 레이블을 영어로 변환
+            if label == "긍정":
+                sentiment_distribution["positive"] = count
+            elif label == "부정":
+                sentiment_distribution["negative"] = count
+            elif label == "중립":
+                sentiment_distribution["neutral"] = count
+            else:
+                sentiment_distribution[label] = count
+    
+    # 최근 분석된 키워드 (상위 10개)
+    recent_keywords = db.query(
+        AnalysisSession.keyword,
+        db.func.count(AnalysisSession.id).label('count')
+    ).group_by(AnalysisSession.keyword).order_by(
+        db.func.max(AnalysisSession.created_at).desc()
+    ).limit(10).all()
+    
+    return {
+        "sessions": {
+            "total": total_sessions,
+            "completed": completed_sessions,
+            "processing": processing_sessions,
+            "failed": failed_sessions
+        },
+        "articles": {
+            "total": total_articles
+        },
+        "comments": {
+            "total": total_comments
+        },
+        "keywords": {
+            "total": total_keywords
+        },
+        "sentiment_distribution": sentiment_distribution,
+        "recent_keywords": [
+            {"keyword": kw, "count": cnt}
+            for kw, cnt in recent_keywords
+        ]
+    }

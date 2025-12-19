@@ -154,6 +154,22 @@ services:
     profiles:
       - nginx
 
+  # Portainer (Docker 관리 UI) - 선택사항
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: news-sentiment-portainer
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer_data:/data
+    networks:
+      - news-network
+    profiles:
+      - portainer
+
 volumes:
   mysql_data:
     driver: local
@@ -162,6 +178,8 @@ volumes:
   backend_logs:
     driver: local
   agent_logs:
+    driver: local
+  portainer_data:
     driver: local
 
 networks:

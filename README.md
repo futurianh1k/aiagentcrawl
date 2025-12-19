@@ -365,11 +365,22 @@ docker-compose logs mysql
 
 ## 📚 문서
 
-- [QUICK_START.md](QUICK_START.md): 빠른 시작 가이드
-- [DOCKER_SETUP.md](DOCKER_SETUP.md): 상세한 Docker 설정 가이드
-- [PROJECT_REVIEW.md](PROJECT_REVIEW.md): 프로젝트 구조 및 리팩토링 계획
-- [AGENT_REFACTORING_SUMMARY.md](AGENT_REFACTORING_SUMMARY.md): Agent 리팩토링 요약
-- [agent/README.md](agent/README.md): Agent 사용 가이드
+모든 가이드 문서는 [`docs/`](./docs/) 폴더에 정리되어 있습니다.
+
+### 주요 문서
+- [📖 문서 가이드](./docs/README.md) - 모든 문서 목록 및 빠른 참조
+- [🚀 빠른 시작](./docs/QUICK_START.md) - 빠른 시작 가이드
+- [🐳 Docker 설정](./docs/DOCKER_SETUP.md) - 상세한 Docker 설정 가이드
+- [📊 데이터베이스 가이드](./docs/DB_CHECK_GUIDE.md) - DB 조회 및 확인 방법
+- [📝 프로젝트 리뷰](./docs/PROJECT_REVIEW.md) - 프로젝트 구조 및 리팩토링 계획
+
+### 추가 가이드
+- [🐳 Docker 로그 확인](./docs/DOCKER_LOGS_GUIDE.md) - Docker 로그 확인 방법
+- [⚙️ 환경 변수 업데이트](./docs/ENV_UPDATE_GUIDE.md) - .env 파일 업데이트 가이드
+- [🔧 Portainer 설정](./docs/PORTAINER_SETUP.md) - Portainer 설정 및 사용 가이드
+- [🔄 리팩토링 요약](./docs/REFACTORING_SUMMARY.md) - 전체 리팩토링 요약
+- [🤖 Agent 리팩토링](./docs/AGENT_REFACTORING_SUMMARY.md) - Agent 리팩토링 요약
+- [agent/README.md](./agent/README.md) - Agent 사용 가이드
 
 ## 📞 지원
 

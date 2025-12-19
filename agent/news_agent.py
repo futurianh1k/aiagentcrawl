@@ -10,13 +10,25 @@ import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+# LangChain import (최신 버전 1.2.0 호환)
 try:
-    from langchain.agents import initialize_agent, AgentType
-    from langchain.llms import OpenAI
-    from langchain.memory import ConversationBufferMemory
+    # LangGraph 기반 ReAct Agent (최신 방식)
+    from langgraph.prebuilt import create_react_agent
+    from langchain_openai import ChatOpenAI
+    from langchain_core.chat_history import InMemoryChatMessageHistory
+    from langchain_core.messages import HumanMessage, AIMessage
     AGENT_AVAILABLE = True
+    USE_LANGGRAPH = True
 except ImportError:
-    AGENT_AVAILABLE = False
+    try:
+        # 대체: LangChain의 다른 방식 시도
+        from langchain_openai import ChatOpenAI
+        from langchain_core.chat_history import InMemoryChatMessageHistory
+        AGENT_AVAILABLE = True
+        USE_LANGGRAPH = False
+    except ImportError:
+        AGENT_AVAILABLE = False
+        USE_LANGGRAPH = False
 
 from common.config import get_config
 from common.utils import safe_log, validate_input
@@ -33,64 +45,63 @@ class NewsAnalysisAgent:
         Args:
             api_key: OpenAI API 키 (None이면 환경 변수에서 읽음)
         """
-        if not AGENT_AVAILABLE:
-            raise RuntimeError(
-                "LangChain Agent가 설치되지 않았습니다. "
-                "'pip install langchain openai' 를 실행하세요."
-            )
-
         config = get_config()
         self.openai_api_key = api_key or config.get_openai_key()
 
         if not self.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY가 필요합니다.")
 
-        # LLM 초기화
-        try:
-            self.llm = OpenAI(
-                temperature=0.1,
-                openai_api_key=self.openai_api_key,
-                max_tokens=2000,
-                verbose=True
-            )
-        except Exception as e:
-            safe_log("LLM 초기화 실패", level="error", error=str(e))
-            raise RuntimeError(f"LLM 초기화 실패: {e}")
+        # LangChain Agent는 선택적 (analyze_news_sentiment에서만 사용)
+        # analyze_news_async는 LangChain 없이도 작동
+        self.agent = None
+        self.llm = None
+        self.memory = None
 
-        # 메모리 설정
-        try:
-            self.memory = ConversationBufferMemory(
-                memory_key="chat_history",
-                return_messages=True,
-                input_key="input",
-                output_key="output"
-            )
-        except Exception as e:
-            safe_log("메모리 초기화 실패", level="warning", error=str(e))
-            self.memory = None
+        if AGENT_AVAILABLE:
+            try:
+                # LLM 초기화
+                self.llm = ChatOpenAI(
+                    temperature=0.1,
+                    openai_api_key=self.openai_api_key,
+                    max_tokens=2000,
+                    model="gpt-4o-mini"
+                )
 
-        # Tools 등록 (실제 Tools 사용)
-        self.tools = [
-            scrape_news,
-            analyze_sentiment,
-            analyze_news_trend,
-        ]
+                # 메모리 설정 (최신 방식)
+                try:
+                    self.memory = InMemoryChatMessageHistory()
+                except Exception as e:
+                    safe_log("메모리 초기화 실패", level="warning", error=str(e))
+                    self.memory = None
 
-        # Agent 초기화
-        try:
-            self.agent = initialize_agent(
-                tools=self.tools,
-                llm=self.llm,
-                agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION,
-                memory=self.memory,
-                verbose=True,
-                max_iterations=10,
-                early_stopping_method="generate"
-            )
-            safe_log("NewsAnalysisAgent 초기화 완료", level="info", tools_count=len(self.tools))
-        except Exception as e:
-            safe_log("Agent 초기화 실패", level="error", error=str(e))
-            raise RuntimeError(f"Agent 초기화 실패: {e}")
+                # Tools 등록 (실제 Tools 사용)
+                self.tools = [
+                    scrape_news,
+                    analyze_sentiment,
+                    analyze_news_trend,
+                ]
+
+                # Agent 초기화 (LangGraph 방식)
+                if USE_LANGGRAPH and create_react_agent:
+                    try:
+                        # create_react_agent는 model과 tools만 필요
+                        self.agent = create_react_agent(
+                            model=self.llm,
+                            tools=self.tools
+                        )
+                        safe_log("NewsAnalysisAgent 초기화 완료 (LangGraph Agent 포함)", level="info", tools_count=len(self.tools))
+                    except Exception as e:
+                        safe_log("LangGraph Agent 초기화 실패 (계속 진행)", level="warning", error=str(e))
+                        self.agent = None
+                else:
+                    safe_log("LangGraph를 사용할 수 없음 (analyze_news_async만 사용 가능)", level="warning")
+                    self.agent = None
+
+            except Exception as e:
+                safe_log("LangChain 초기화 실패 (계속 진행)", level="warning", error=str(e))
+                # LangChain 없이도 analyze_news_async는 작동 가능
+        else:
+            safe_log("LangChain이 설치되지 않음 (analyze_news_async만 사용 가능)", level="warning")
 
     async def analyze_news_async(
         self,
@@ -149,8 +160,10 @@ class NewsAnalysisAgent:
                     comment_text = comment.get("text", "") if isinstance(comment, dict) else str(comment)
                     if comment_text:
                         comment_sentiment = analyze_sentiment(comment_text)
+                        # 댓글 데이터와 감성 분석 결과 병합
+                        comment_data = comment if isinstance(comment, dict) else {"text": comment}
                         analyzed_comments.append({
-                            **comment if isinstance(comment, dict) else {"text": comment},
+                            **comment_data,
                             **comment_sentiment
                         })
                         all_comments.append(comment_text)
@@ -216,15 +229,42 @@ class NewsAnalysisAgent:
         Returns:
             Agent 응답 문자열
         """
+        if not self.agent:
+            return "LangChain Agent가 초기화되지 않았습니다. analyze_news_async를 사용하세요."
+
         if not validate_input(user_query, max_length=500):
             return "유효하지 않은 질의입니다."
 
         safe_log("Agent 실행 시작", level="info", query=user_query[:50])
 
         try:
-            response = self.agent.run(input=user_query)
+            # LangGraph Agent 실행 (최신 방식)
+            if USE_LANGGRAPH:
+                from langchain_core.messages import HumanMessage
+                messages = [HumanMessage(content=user_query)]
+                if self.memory:
+                    messages = list(self.memory.messages) + messages
+                
+                response = self.agent.invoke({"messages": messages})
+                
+                # 메모리에 응답 저장
+                if self.memory:
+                    self.memory.add_message(HumanMessage(content=user_query))
+                    if isinstance(response, dict) and "messages" in response:
+                        self.memory.add_messages(response["messages"][-1:])
+                
+                # 응답 추출
+                if isinstance(response, dict) and "messages" in response:
+                    last_message = response["messages"][-1]
+                    result = last_message.content if hasattr(last_message, "content") else str(last_message)
+                else:
+                    result = str(response)
+            else:
+                # 대체 방식 (없으면 에러)
+                result = "LangGraph Agent를 사용할 수 없습니다."
+            
             safe_log("Agent 실행 완료", level="info")
-            return response
+            return result
         except Exception as e:
             error_msg = f"Agent 실행 중 오류: {str(e)}"
             safe_log("Agent 실행 오류", level="error", error=str(e))
@@ -271,7 +311,7 @@ class NewsAnalysisAgent:
     def get_conversation_history(self) -> List[Dict]:
         """대화 히스토리 반환"""
         if self.memory:
-            return self.memory.chat_memory.messages
+            return [{"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content} for m in self.memory.messages]
         return []
 
 
@@ -301,9 +341,10 @@ async def main():
             print(f"   - 키워드 수: {len(result['keywords'])}")
 
         # 테스트: 자연어 질의
-        print("\n📝 자연어 질의 테스트:")
-        response = agent.analyze_news_sentiment("AI 기술에 대한 최근 뉴스의 여론을 분석해줘")
-        print(f"✅ 응답: {response[:200]}...")
+        if agent.agent:
+            print("\n📝 자연어 질의 테스트:")
+            response = agent.analyze_news_sentiment("AI 기술에 대한 최근 뉴스의 여론을 분석해줘")
+            print(f"✅ 응답: {response[:200]}...")
 
     except Exception as e:
         print(f"❌ 오류: {e}")
@@ -311,4 +352,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

@@ -16,12 +16,29 @@ except ImportError:
     openai = None
     OPENAI_AVAILABLE = False
 
+# Google Gemini API import (deprecated 경고 억제)
+import warnings
+# FutureWarning 완전 억제 (google.generativeai deprecated 경고)
+warnings.simplefilter("ignore", FutureWarning)
+
 try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
+    # 최신 google.genai 패키지 시도
+    try:
+        import google.genai as genai
+        GEMINI_AVAILABLE = True
+        USE_NEW_GENAI = True
+    except ImportError:
+        # 구버전 google.generativeai 사용 (경고 억제됨)
+        import google.generativeai as genai
+        GEMINI_AVAILABLE = True
+        USE_NEW_GENAI = False
 except ImportError:
     genai = None
     GEMINI_AVAILABLE = False
+    USE_NEW_GENAI = False
+
+# FutureWarning 필터 복원 (다른 경고는 정상 표시)
+warnings.simplefilter("default", FutureWarning)
 
 from langchain.tools import tool
 
