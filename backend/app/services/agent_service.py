@@ -40,7 +40,7 @@ class NewsAnalysisAgent:
         """
         try:
             # Agent 서비스의 /analyze 엔드포인트 호출
-            async with httpx.AsyncClient(timeout=300.0) as client:  # 5분 타임아웃
+            async with httpx.AsyncClient(timeout=600.0) as client:  # 10분 타임아웃
                 response = await client.post(
                     f"{self.agent_service_url}/analyze",
                     json={
@@ -56,7 +56,7 @@ class NewsAnalysisAgent:
                 return self._format_agent_response(result, keyword, sources)
                 
         except httpx.TimeoutException:
-            raise Exception("Agent 서비스 응답 시간 초과 (5분 이상 소요)")
+            raise Exception("Agent 서비스 응답 시간 초과 (10분 이상 소요)")
         except httpx.HTTPStatusError as e:
             raise Exception(f"Agent 서비스 오류: {e.response.status_code} - {e.response.text}")
         except Exception as e:

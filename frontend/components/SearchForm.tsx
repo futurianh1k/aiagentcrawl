@@ -11,7 +11,7 @@ interface SearchFormProps {
 export default function SearchForm({ onAnalyze, isLoading }: SearchFormProps) {
   const [keyword, setKeyword] = useState('');
   const [sources, setSources] = useState<string[]>(['네이버']);
-  const [maxArticles, setMaxArticles] = useState(20);
+  const [maxArticles, setMaxArticles] = useState(10);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
