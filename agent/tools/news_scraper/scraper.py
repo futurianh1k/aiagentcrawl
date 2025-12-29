@@ -324,23 +324,30 @@ class NewsScraperTool:
             for i, link in enumerate(news_links[:max_articles * 3], 1):  # 더 많이 수집 후 필터링
                 try:
                     href = link.get_attribute("href")
-                    if href:
-                        # 네이버 뉴스 URL 필터링 (더 관대하게)
-                        if validate_url(href):
-                            # 여러 패턴 확인
-                            is_news_url = False
+                    if href and validate_url(href):
+                        # 네이버 뉴스 기사 URL 엄격 필터링
+                        is_news_article = False
+                        
+                        # 실제 기사 URL 패턴만 허용
+                        if "n.news.naver.com/mnews/article/" in href:
+                            # 모바일 뉴스: https://n.news.naver.com/mnews/article/001/0015819227
+                            is_news_article = True
+                            print(f"[DEBUG] ✓ 모바일 뉴스 기사: {href[:80]}...")
+                        elif "news.naver.com/main/read" in href:
+                            # PC 뉴스: https://news.naver.com/main/read.nhn?mode=...
+                            is_news_article = True
+                            print(f"[DEBUG] ✓ PC 뉴스 기사: {href[:80]}...")
+                        elif "/article/" in href and "news.naver.com" in href:
+                            # 기타 기사 패턴
+                            is_news_article = True
+                            print(f"[DEBUG] ✓ 기타 뉴스 기사: {href[:80]}...")
+                        else:
+                            # 제외되는 URL 로그 (디버깅용)
                             if "news.naver.com" in href:
-                                is_news_url = True
-                                print(f"[DEBUG] ✓ news.naver.com 패턴 매칭: {href[:80]}...")
-                            elif "n.news.naver.com" in href:
-                                is_news_url = True
-                                print(f"[DEBUG] ✓ n.news.naver.com 패턴 매칭: {href[:80]}...")
-                            elif "/read.nhn" in href or "/read.naver" in href:
-                                is_news_url = True
-                                print(f"[DEBUG] ✓ /read 패턴 매칭: {href[:80]}...")
-                            
-                            if is_news_url:
-                                article_urls.append(href)
+                                print(f"[DEBUG] ✗ 기사 아님 (제외): {href[:80]}...")
+                        
+                        if is_news_article:
+                            article_urls.append(href)
                                 
                         if len(article_urls) >= max_articles:
                             break
