@@ -6,6 +6,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func  # SQLAlchemy func 추가
 from app.api.dependencies import get_database_session
 from app.schemas.requests import AnalysisResponse, SessionListResponse
 from app.models.database import AnalysisSession, Article, Comment, Keyword
@@ -195,7 +196,7 @@ async def get_statistics_summary(
     # 감정 분포
     sentiment_stats = db.query(
         Article.sentiment_label,
-        db.func.count(Article.id).label('count')
+        func.count(Article.id).label('count')
     ).group_by(Article.sentiment_label).all()
     
     sentiment_distribution = {"positive": 0, "negative": 0, "neutral": 0}
@@ -214,9 +215,9 @@ async def get_statistics_summary(
     # 최근 분석된 키워드 (상위 10개)
     recent_keywords = db.query(
         AnalysisSession.keyword,
-        db.func.count(AnalysisSession.id).label('count')
+        func.count(AnalysisSession.id).label('count')
     ).group_by(AnalysisSession.keyword).order_by(
-        db.func.max(AnalysisSession.created_at).desc()
+        func.max(AnalysisSession.created_at).desc()
     ).limit(10).all()
     
     return {
