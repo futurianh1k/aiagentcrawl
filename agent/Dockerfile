@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # FastAPI 서버 의존성 추가
 RUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic
 
+# Playwright 설치 (브라우저는 런타임 이미지에서 설치)
+RUN pip install --no-cache-dir playwright>=1.40.0
+
 # 운영 환경 이미지
 FROM python:3.11-slim
 
@@ -76,7 +79,7 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --d
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# ChromeDriver 직접 다운로드 및 설치 (ChromeDriverManager 우회)
+# ChromeDriver 직접 다운로드 및 설치 (Selenium용, ChromeDriverManager 우회)
 # Chrome 버전과 호환되는 ChromeDriver 설치
 RUN CHROME_VERSION=$(google-chrome --version | sed 's/Google Chrome //g' | cut -d. -f1) \
     && echo "Chrome version: $CHROME_VERSION" \
@@ -88,6 +91,12 @@ RUN CHROME_VERSION=$(google-chrome --version | sed 's/Google Chrome //g' | cut -
     && chmod +x /usr/local/bin/chromedriver \
     && rm -rf /tmp/chromedriver.zip /tmp/chromedriver-linux64 \
     && chromedriver --version
+
+# Playwright 브라우저 설치 (Chromium만 - 용량 절약)
+# root 사용자로 설치 후 권한 설정
+RUN pip install --no-cache-dir playwright>=1.40.0 \
+    && playwright install chromium \
+    && playwright install-deps chromium
 
 # 빌드 단계에서 설치된 Python 패키지 복사
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages

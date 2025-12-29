@@ -35,6 +35,14 @@ from common.utils import safe_log, validate_input
 from agent.tools import scrape_news, analyze_sentiment, analyze_sentiment_func, analyze_news_trend, analyze_news_trend_func
 from agent.tools.news_scraper import NewsScraperTool
 
+# Playwright 스크래퍼 (병렬처리 지원)
+try:
+    from agent.tools.news_scraper.playwright_scraper import PlaywrightNewsScraper
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+    safe_log("Playwright 사용 불가 - Selenium 폴백", level="warning")
+
 
 class NewsAnalysisAgent:
     """뉴스 감성 분석을 위한 통합 AI Agent"""
@@ -131,103 +139,110 @@ class NewsAnalysisAgent:
         safe_log("뉴스 분석 시작", level="info", keyword=keyword, sources=sources)
 
         try:
-            # 1단계: 뉴스 수집
-            # scrape_news가 @tool 데코레이터로 장식되어 있어 직접 호출 불가
-            # NewsScraperTool을 직접 사용
-            scraper = NewsScraperTool()
+            # 1단계: 뉴스 수집 (Playwright 병렬처리 또는 Selenium 폴백)
             articles_data = []
             
-            try:
-                # 소스 필터링 및 매핑 (다양한 소스 이름 지원)
-                source_mapping = {
-                    "네이버": "네이버",
-                    "naver": "네이버",
-                    "구글": "구글",
-                    "google": "구글",
+            # 소스 필터링 및 매핑
+            source_mapping = {
+                "네이버": "네이버", "naver": "네이버",
+                "구글": "구글", "google": "구글",
+            }
+            unsupported_sources = ["다음", "Daum", "KBS", "SBS", "MBC", "YTN", "JTBC", "연합뉴스"]
+            
+            valid_sources = []
+            rejected_sources = []
+            
+            for source in (sources or ["네이버"]):
+                if source in unsupported_sources:
+                    rejected_sources.append(source)
+                    safe_log("지원하지 않는 뉴스 소스", level="warning", source=source)
+                    continue
+                
+                normalized_source = source_mapping.get(source)
+                if normalized_source:
+                    if normalized_source not in valid_sources:
+                        valid_sources.append(normalized_source)
+                else:
+                    rejected_sources.append(source)
+            
+            if not valid_sources and rejected_sources:
+                return {
+                    "error": f"선택한 뉴스 소스({', '.join(rejected_sources)})는 지원하지 않습니다. 네이버 또는 구글을 선택해주세요.",
+                    "keyword": keyword,
+                    "rejected_sources": rejected_sources,
+                    "supported_sources": ["네이버", "구글"]
                 }
+            
+            if not valid_sources:
+                valid_sources = ["네이버"]
+            
+            # Playwright 병렬처리 사용 (가능한 경우)
+            if PLAYWRIGHT_AVAILABLE:
+                safe_log("Playwright 병렬 크롤링 시작", level="info", keyword=keyword, sources=valid_sources)
+                print(f"[DEBUG] 🚀 Playwright 병렬처리 사용 - 소스: {valid_sources}")
                 
-                # 지원하지 않는 소스 목록 (명확한 에러 메시지용)
-                unsupported_sources = ["다음", "Daum", "KBS", "SBS", "MBC", "YTN", "JTBC", "연합뉴스"]
-                
-                valid_sources = []
-                rejected_sources = []  # 지원하지 않는 소스 추적
-                
-                for source in (sources or ["네이버"]):
-                    # 지원하지 않는 소스 확인
-                    if source in unsupported_sources:
-                        rejected_sources.append(source)
-                        safe_log("지원하지 않는 뉴스 소스", level="warning", source=source)
-                        continue
-                    
-                    normalized_source = source_mapping.get(source, None)
-                    if normalized_source:
-                        if normalized_source not in valid_sources:
-                            valid_sources.append(normalized_source)
-                        if source != normalized_source:
-                            safe_log(f"소스 매핑: {source} -> {normalized_source}", level="info")
-                    else:
-                        # 알 수 없는 소스
-                        rejected_sources.append(source)
-                        safe_log("알 수 없는 뉴스 소스", level="warning", source=source)
-                
-                # 지원하지 않는 소스만 선택한 경우 에러 반환
-                if not valid_sources and rejected_sources:
-                    return {
-                        "error": f"선택한 뉴스 소스({', '.join(rejected_sources)})는 현재 지원하지 않습니다. 네이버 또는 구글을 선택해주세요.",
-                        "keyword": keyword,
-                        "rejected_sources": rejected_sources,
-                        "supported_sources": ["네이버", "구글"]
-                    }
-                
-                if not valid_sources:
-                    valid_sources = ["네이버"]  # 기본값
-                
-                # 뉴스 검색 및 크롤링 (타임아웃 설정)
-                import asyncio
+                playwright_scraper = PlaywrightNewsScraper()
                 try:
-                    # 전체 크롤링에 최대 2분 제한 (각 소스별로 60초)
-                    article_urls = await asyncio.wait_for(
-                        asyncio.to_thread(scraper.search_news, keyword, valid_sources, max_articles),
-                        timeout=120  # 2분
+                    # 병렬로 모든 기사 수집 및 추출 (검색 + 추출 모두 병렬)
+                    articles_data = await asyncio.wait_for(
+                        playwright_scraper.scrape_all(keyword, valid_sources, max_articles),
+                        timeout=180  # 3분 (병렬처리로 충분)
                     )
+                    
+                    # 키워드 추가
+                    for article in articles_data:
+                        article["keyword"] = keyword
+                        
                 except asyncio.TimeoutError:
-                    safe_log("뉴스 검색 타임아웃 (2분 초과)", level="warning", keyword=keyword, sources=valid_sources)
+                    safe_log("Playwright 타임아웃 (3분 초과)", level="warning")
                     return {
                         "error": f"'{keyword}' 키워드로 기사 검색 중 시간 초과가 발생했습니다.",
                         "keyword": keyword,
                         "sources": valid_sources
                     }
+                finally:
+                    await playwright_scraper.cleanup()
+            else:
+                # Selenium 폴백 (기존 방식)
+                safe_log("Selenium 순차 크롤링 시작 (Playwright 불가)", level="info")
+                print(f"[DEBUG] ⚠️ Selenium 순차처리 폴백")
                 
-                if not article_urls:
+                scraper = NewsScraperTool()
+                try:
+                    article_urls = await asyncio.wait_for(
+                        asyncio.to_thread(scraper.search_news, keyword, valid_sources, max_articles),
+                        timeout=120
+                    )
+                    
+                    if not article_urls:
+                        return {
+                            "error": f"'{keyword}' 키워드로 기사를 찾을 수 없습니다.",
+                            "keyword": keyword,
+                            "sources": valid_sources
+                        }
+                    
+                    # 순차 추출
+                    import time
+                    for url in article_urls:
+                        source = "naver" if "naver.com" in url else "google"
+                        try:
+                            article = scraper.scrape_article(url, source)
+                            article_dict = article.to_dict()
+                            article_dict["keyword"] = keyword
+                            article_dict["source"] = "네이버" if source == "naver" else "구글"
+                            articles_data.append(article_dict)
+                        except Exception as e:
+                            safe_log(f"기사 크롤링 실패: {url}", level="warning", error=str(e))
+                        time.sleep(1)
+                        
+                except asyncio.TimeoutError:
                     return {
-                        "error": f"'{keyword}' 키워드로 기사를 찾을 수 없습니다.",
+                        "error": f"'{keyword}' 키워드로 기사 검색 중 시간 초과가 발생했습니다.",
                         "keyword": keyword,
                         "sources": valid_sources
                     }
-                
-                # 각 기사 상세 정보 추출
-                for i, url in enumerate(article_urls, 1):
-                    safe_log(f"기사 처리 중 ({i}/{len(article_urls)})", level="info")
-                    
-                    # URL에서 소스 판단
-                    source = "naver" if "naver.com" in url else "google"
-                    
-                    try:
-                        article = scraper.scrape_article(url, source)
-                        article_dict = article.to_dict()
-                        article_dict["keyword"] = keyword
-                        article_dict["source"] = "네이버" if source == "naver" else "구글"
-                        articles_data.append(article_dict)
-                    except Exception as e:
-                        safe_log(f"기사 크롤링 실패: {url}", level="warning", error=str(e))
-                        continue
-                    
-                    # Rate Limit 준수
-                    import time
-                    time.sleep(1)
-                    
-            finally:
-                scraper.cleanup()
+                finally:
+                    scraper.cleanup()
 
             if not articles_data or (len(articles_data) == 1 and "error" in articles_data[0]):
                 return {
