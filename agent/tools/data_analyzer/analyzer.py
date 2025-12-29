@@ -10,10 +10,10 @@ import time
 from typing import List, Dict, Any, Optional
 
 try:
-    import openai
+    from openai import OpenAI
     OPENAI_AVAILABLE = True
 except ImportError:
-    openai = None
+    OpenAI = None
     OPENAI_AVAILABLE = False
 
 # Google Gemini API import (deprecated 경고 억제)
@@ -62,13 +62,16 @@ class DataAnalyzerTool:
         self.use_openai = use_openai
         self.config = get_config()
 
+        self.openai_client = None
+        
         if use_openai:
             if not OPENAI_AVAILABLE:
                 raise RuntimeError("OpenAI 라이브러리가 설치되지 않았습니다.")
             api_key = self.config.get_openai_key()
             if not api_key:
                 raise RuntimeError("OPENAI_API_KEY가 설정되지 않았습니다.")
-            openai.api_key = api_key
+            # 새로운 OpenAI 클라이언트 생성 (openai >= 1.0.0)
+            self.openai_client = OpenAI(api_key=api_key)
             safe_log("OpenAI 초기화 완료", level="info")
         else:
             if not GEMINI_AVAILABLE:
@@ -140,9 +143,10 @@ JSON 형식을 엄격히 지켜주세요."""
 JSON 형식을 엄격히 지켜주세요."""
 
     def call_openai_api(self, prompt: str, max_tokens: int = 500) -> str:
-        """OpenAI API 호출"""
+        """OpenAI API 호출 (openai >= 1.0.0 호환)"""
         try:
-            response = openai.ChatCompletion.create(
+            # 새로운 OpenAI API 형식 (openai >= 1.0.0)
+            response = self.openai_client.chat.completions.create(
                 model=self.config.OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": "당신은 정확한 JSON 형식으로만 응답하는 감성 분석 전문가입니다."},
