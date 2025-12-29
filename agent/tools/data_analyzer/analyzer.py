@@ -298,9 +298,18 @@ def analyze_sentiment(comment_text: str, use_openai: bool = True) -> Dict[str, A
     return _analyze_sentiment_impl(comment_text, use_openai)
 
 
-@tool
-def analyze_news_trend(comments_data: List[Dict], keyword: str, use_openai: bool = True) -> Dict[str, Any]:
-    """뉴스 댓글 전체 동향 분석 Tool 함수"""
+def _analyze_news_trend_impl(comments_data: List[Dict], keyword: str, use_openai: bool = True) -> Dict[str, Any]:
+    """
+    뉴스 댓글 전체 동향 분석 구현 함수 (직접 호출 가능)
+    
+    Args:
+        comments_data: 댓글 데이터 목록
+        keyword: 분석 키워드
+        use_openai: OpenAI 사용 여부
+    
+    Returns:
+        동향 분석 결과 딕셔너리
+    """
     try:
         analyzer = DataAnalyzerTool(use_openai=use_openai)
         
@@ -340,3 +349,13 @@ def analyze_news_trend(comments_data: List[Dict], keyword: str, use_openai: bool
             "summary": f"동향 분석 중 오류: {str(e)}",
             "total_comments": len(comments_data) if comments_data else 0
         }
+
+
+# 직접 호출 가능한 함수 (news_agent.py 등에서 사용)
+analyze_news_trend_func = _analyze_news_trend_impl
+
+
+@tool
+def analyze_news_trend(comments_data: List[Dict], keyword: str, use_openai: bool = True) -> Dict[str, Any]:
+    """뉴스 댓글 전체 동향 분석 Tool 함수 (LangChain Agent용)"""
+    return _analyze_news_trend_impl(comments_data, keyword, use_openai)

@@ -32,7 +32,7 @@ except ImportError:
 
 from common.config import get_config
 from common.utils import safe_log, validate_input
-from agent.tools import scrape_news, analyze_sentiment, analyze_sentiment_func, analyze_news_trend
+from agent.tools import scrape_news, analyze_sentiment, analyze_sentiment_func, analyze_news_trend, analyze_news_trend_func
 from agent.tools.news_scraper import NewsScraperTool
 
 
@@ -290,7 +290,8 @@ class NewsAnalysisAgent:
 
             # 3단계: 전체 동향 분석
             if all_comments:
-                trend_result = analyze_news_trend(
+                # analyze_news_trend_func 사용 (직접 호출 가능한 함수)
+                trend_result = analyze_news_trend_func(
                     [{"text": c} for c in all_comments],
                     keyword
                 )
