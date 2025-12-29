@@ -144,16 +144,21 @@ class NewsAnalysisAgent:
                     "naver": "네이버",
                     "구글": "구글",
                     "google": "구글",
-                    # 지원하지 않는 소스는 네이버로 매핑
-                    "다음": "네이버",
-                    "KBS": "네이버",
-                    "SBS": "네이버",
-                    "MBC": "네이버",
-                    "YTN": "네이버",
                 }
                 
+                # 지원하지 않는 소스 목록 (명확한 에러 메시지용)
+                unsupported_sources = ["다음", "Daum", "KBS", "SBS", "MBC", "YTN", "JTBC", "연합뉴스"]
+                
                 valid_sources = []
+                rejected_sources = []  # 지원하지 않는 소스 추적
+                
                 for source in (sources or ["네이버"]):
+                    # 지원하지 않는 소스 확인
+                    if source in unsupported_sources:
+                        rejected_sources.append(source)
+                        safe_log("지원하지 않는 뉴스 소스", level="warning", source=source)
+                        continue
+                    
                     normalized_source = source_mapping.get(source, None)
                     if normalized_source:
                         if normalized_source not in valid_sources:
@@ -161,7 +166,18 @@ class NewsAnalysisAgent:
                         if source != normalized_source:
                             safe_log(f"소스 매핑: {source} -> {normalized_source}", level="info")
                     else:
-                        safe_log("지원하지 않는 뉴스 소스", level="warning", source=source)
+                        # 알 수 없는 소스
+                        rejected_sources.append(source)
+                        safe_log("알 수 없는 뉴스 소스", level="warning", source=source)
+                
+                # 지원하지 않는 소스만 선택한 경우 에러 반환
+                if not valid_sources and rejected_sources:
+                    return {
+                        "error": f"선택한 뉴스 소스({', '.join(rejected_sources)})는 현재 지원하지 않습니다. 네이버 또는 구글을 선택해주세요.",
+                        "keyword": keyword,
+                        "rejected_sources": rejected_sources,
+                        "supported_sources": ["네이버", "구글"]
+                    }
                 
                 if not valid_sources:
                     valid_sources = ["네이버"]  # 기본값

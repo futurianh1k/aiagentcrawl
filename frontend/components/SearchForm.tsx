@@ -35,8 +35,8 @@ export default function SearchForm({ onAnalyze, isLoading }: SearchFormProps) {
     }
   };
 
-  // 지원되는 뉴스 소스 (네이버, 구글만 실제 크롤링 지원, 나머지는 네이버로 매핑)
-  const availableSources = ['네이버', '구글'];
+  // 현재 지원되는 뉴스 소스 (네이버, 구글만 지원)
+  const availableSources: string[] = ['네이버', '구글'];
 
   return (
     <div className="card p-8 max-w-2xl mx-auto">
@@ -68,9 +68,12 @@ export default function SearchForm({ onAnalyze, isLoading }: SearchFormProps) {
           <label className="block text-sm font-medium text-gray-700 mb-3">
             뉴스 소스 선택
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {availableSources.map((source) => (
-              <label key={source} className="flex items-center space-x-2 cursor-pointer">
+              <label 
+                key={source} 
+                className="flex items-center space-x-2 cursor-pointer p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+              >
                 <input
                   type="checkbox"
                   checked={sources.includes(source)}
@@ -78,13 +81,18 @@ export default function SearchForm({ onAnalyze, isLoading }: SearchFormProps) {
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   disabled={isLoading}
                 />
-                <span className="text-sm text-gray-700">{source}</span>
+                <span className="text-sm font-medium text-gray-700">{source}</span>
               </label>
             ))}
           </div>
-          <p className="text-sm text-gray-500 mt-2">
-            선택된 소스: {sources.length > 0 ? sources.join(', ') : '없음'}
-          </p>
+          <div className="mt-3 space-y-1">
+            <p className="text-sm text-gray-600">
+              선택된 소스: <span className="font-medium text-blue-600">{sources.length > 0 ? sources.join(', ') : '없음'}</span>
+            </p>
+            <p className="text-xs text-gray-500">
+              💡 현재 네이버와 구글 뉴스만 지원합니다
+            </p>
+          </div>
         </div>
 
         {/* Max Articles */}

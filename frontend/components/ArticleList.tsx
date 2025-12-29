@@ -62,15 +62,15 @@ export default function ArticleList({ articles }: ArticleListProps) {
 
   const getSentimentIcon = (label?: string, score?: number) => {
     if (!label) return <Minus className="w-4 h-4 text-gray-400" />;
-    
+
     // 한국어 레이블도 처리
     const normalizedLabel = label.toLowerCase();
     if (normalizedLabel === 'positive' || label === '긍정' || label === '긍정적') {
-      return <TrendingUp className="w-4 h-4 text-green-600" />;
+        return <TrendingUp className="w-4 h-4 text-green-600" />;
     } else if (normalizedLabel === 'negative' || label === '부정' || label === '부정적') {
-      return <TrendingDown className="w-4 h-4 text-red-600" />;
+        return <TrendingDown className="w-4 h-4 text-red-600" />;
     } else {
-      return <Minus className="w-4 h-4 text-gray-400" />;
+        return <Minus className="w-4 h-4 text-gray-400" />;
     }
   };
 

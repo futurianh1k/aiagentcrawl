@@ -55,7 +55,7 @@ async def get_analysis_result(
         }
         for keyword in keywords
     ]
-    
+
     # 키워드가 없으면 기본 키워드 생성 (검색 키워드 포함)
     if not keywords_data and articles_data:
         keywords_data = [
