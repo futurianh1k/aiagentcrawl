@@ -32,7 +32,7 @@ except ImportError:
 
 from common.config import get_config
 from common.utils import safe_log, validate_input
-from agent.tools import scrape_news, analyze_sentiment, analyze_news_trend
+from agent.tools import scrape_news, analyze_sentiment, analyze_sentiment_func, analyze_news_trend
 from agent.tools.news_scraper import NewsScraperTool
 
 
@@ -249,7 +249,8 @@ class NewsAnalysisAgent:
                 article_text = f"{article.get('title', '')} {article.get('content', '')}"
                 
                 try:
-                    article_sentiment = analyze_sentiment(article_text[:500])  # 최대 500자
+                    # analyze_sentiment_func 사용 (직접 호출 가능한 함수)
+                    article_sentiment = analyze_sentiment_func(article_text[:500])  # 최대 500자
                 except Exception as e:
                     safe_log("기사 감성 분석 실패", level="error", error=str(e))
                     article_sentiment = {
@@ -267,7 +268,8 @@ class NewsAnalysisAgent:
                     comment_text = comment.get("text", "") if isinstance(comment, dict) else str(comment)
                     if comment_text:
                         try:
-                            comment_sentiment = analyze_sentiment(comment_text)
+                            # analyze_sentiment_func 사용 (직접 호출 가능한 함수)
+                            comment_sentiment = analyze_sentiment_func(comment_text)
                             # 댓글 데이터와 감성 분석 결과 병합
                             comment_data = comment if isinstance(comment, dict) else {"text": comment}
                             analyzed_comments.append({

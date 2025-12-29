@@ -264,9 +264,17 @@ JSON 형식을 엄격히 지켜주세요."""
         )
 
 
-@tool
-def analyze_sentiment(comment_text: str, use_openai: bool = True) -> Dict[str, Any]:
-    """단일 댓글 감성 분석 Tool 함수"""
+def _analyze_sentiment_impl(comment_text: str, use_openai: bool = True) -> Dict[str, Any]:
+    """
+    단일 댓글 감성 분석 구현 함수 (직접 호출 가능)
+    
+    Args:
+        comment_text: 분석할 텍스트
+        use_openai: OpenAI 사용 여부
+    
+    Returns:
+        감성 분석 결과 딕셔너리
+    """
     try:
         analyzer = DataAnalyzerTool(use_openai=use_openai)
         result = analyzer.analyze_single_comment(comment_text)
@@ -274,6 +282,16 @@ def analyze_sentiment(comment_text: str, use_openai: bool = True) -> Dict[str, A
     except Exception as e:
         safe_log("감성 분석 오류", level="error", error=str(e))
         return {"error": str(e), "sentiment": "중립", "confidence": 0.0}
+
+
+# 직접 호출 가능한 함수 (news_agent.py 등에서 사용)
+analyze_sentiment_func = _analyze_sentiment_impl
+
+
+@tool
+def analyze_sentiment(comment_text: str, use_openai: bool = True) -> Dict[str, Any]:
+    """단일 댓글 감성 분석 Tool 함수 (LangChain Agent용)"""
+    return _analyze_sentiment_impl(comment_text, use_openai)
 
 
 @tool

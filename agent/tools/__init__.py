@@ -31,7 +31,12 @@ except (ImportError, AttributeError):
 from .news_scraper import scrape_news, NewsScraperTool, NewsSource
 
 # Data Analyzer Tools
-from .data_analyzer import analyze_sentiment, analyze_news_trend, DataAnalyzerTool
+from .data_analyzer import (
+    analyze_sentiment,       # LangChain Tool (Agent용)
+    analyze_sentiment_func,  # 직접 호출 가능한 함수
+    analyze_news_trend,
+    DataAnalyzerTool,
+)
 
 __all__ = [
     # Calculator Tools
@@ -43,7 +48,8 @@ __all__ = [
     "NewsScraperTool",
     "NewsSource",
     # Data Analyzer
-    "analyze_sentiment",
+    "analyze_sentiment",       # LangChain Tool
+    "analyze_sentiment_func",  # 직접 호출 가능
     "analyze_news_trend",
     "DataAnalyzerTool",
 ]
