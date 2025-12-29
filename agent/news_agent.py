@@ -185,15 +185,15 @@ class NewsAnalysisAgent:
                 # 뉴스 검색 및 크롤링 (타임아웃 설정)
                 import asyncio
                 try:
-                    # 전체 크롤링에 최대 4분 제한
+                    # 전체 크롤링에 최대 2분 제한 (각 소스별로 60초)
                     article_urls = await asyncio.wait_for(
                         asyncio.to_thread(scraper.search_news, keyword, valid_sources, max_articles),
-                        timeout=240  # 4분
+                        timeout=120  # 2분
                     )
                 except asyncio.TimeoutError:
-                    safe_log("뉴스 검색 타임아웃 (4분 초과)", level="warning", keyword=keyword, sources=valid_sources)
+                    safe_log("뉴스 검색 타임아웃 (2분 초과)", level="warning", keyword=keyword, sources=valid_sources)
                     return {
-                        "error": f"'{keyword}' 키워드로 기사 검색 중 시간 초과가 발생했습니다. 네이버 뉴스만 사용해주세요.",
+                        "error": f"'{keyword}' 키워드로 기사 검색 중 시간 초과가 발생했습니다.",
                         "keyword": keyword,
                         "sources": valid_sources
                     }

@@ -18,11 +18,11 @@ from .base_scraper import BaseNewsScraper
 from .models import NewsArticle, Comment
 
 
-# 네이버 뉴스 CSS Selector 상수
+# 네이버 뉴스 CSS Selector 상수 (2024년 12월 기준)
 NAVER_SELECTORS = {
     "news_link": [
         # 구체적인 셀렉터부터 시도 (우선순위 순)
-        "a.news_tit",  # 가장 일반적
+        "a.news_tit",  # 가장 일반적 (뉴스 검색 결과)
         "div.news_area a.news_tit",
         ".news_contents a.news_tit",
         "div.news_wrap a.news_tit",
@@ -30,11 +30,40 @@ NAVER_SELECTORS = {
         "div.group_news a.news_tit",
         ".news_area a.news_tit",
         ".api_subject_bx a.news_tit",
-        "a[href*='news.naver.com']",  # URL 기반 필터
+        
+        # 새로운 네이버 뉴스 구조
+        ".news_tit",
+        ".bx a.news_tit",
+        ".sp_ncs a.news_tit",
+        
+        # URL 기반 필터 (마지막에 시도)
+        "a[href*='n.news.naver.com']",
+        "a[href*='news.naver.com']",
         "div.news_wrap a[href*='news.naver.com']",
     ],
-    "title": "#ct > div.media_end_head.go_trans > div.media_end_head_title > h2",
-    "content": "#dic_area",
+    "title": [
+        "#ct > div.media_end_head.go_trans > div.media_end_head_title > h2",
+        "h2.media_end_head_headline",
+        "#title_area span",
+        ".media_end_head_headline",
+        "h3.tit_view",
+        ".article_header h2",
+        ".article_view h3",
+        "#articleTitle",
+        "h1",
+    ],
+    "content": [
+        "#dic_area",
+        "#newsct_article",
+        ".news_end_body_container",
+        "#articeBody",
+        ".article_body",
+        ".article_view",
+        "article",
+        "div#articleBodyContents",
+        "#articleBody",
+        ".news_end_body",
+    ],
     "comment_more": ".u_cbox_btn_more",
     "comment": ".u_cbox_comment_box .u_cbox_contents",
 }
@@ -79,10 +108,8 @@ class NaverNewsScraper(BaseNewsScraper):
             print(f"[DEBUG] 현재 URL: {current_url}, 페이지 제목: {page_title}")
             safe_log("페이지 로드 완료", level="info", current_url=current_url, page_title=page_title)
 
-            # Explicit Wait: 검색 결과가 로드될 때까지 대기
-            wait = WebDriverWait(self.driver, self.config.CRAWLER_TIMEOUT)
-
             # 여러 셀렉터 시도 (네이버가 구조를 자주 변경함)
+            # find_elements 사용 (타임아웃 없이 즉시 반환)
             news_links = []
             selectors = NAVER_SELECTORS["news_link"]
             
@@ -90,23 +117,25 @@ class NaverNewsScraper(BaseNewsScraper):
             for i, selector in enumerate(selectors, 1):
                 try:
                     print(f"[DEBUG] 셀렉터 {i}/{len(selectors)} 시도: {selector}")
-                    safe_log("셀렉터 시도", level="info", selector=selector, attempt=f"{i}/{len(selectors)}")
                     
-                    links = wait.until(
-                        EC.presence_of_all_elements_located(
-                            (By.CSS_SELECTOR, selector)
-                        )
-                    )
+                    # find_elements는 요소가 없으면 빈 리스트 반환 (예외 없음)
+                    links = self.driver.find_elements(By.CSS_SELECTOR, selector)
                     
                     if links and len(links) > 0:
-                        news_links = links
-                        print(f"[DEBUG] ✓ 셀렉터 성공! {len(links)}개의 링크 발견")
-                        safe_log("셀렉터 성공", level="info", selector=selector, count=len(links))
-                        break
+                        # href 속성이 있는 링크만 필터링
+                        valid_links = [link for link in links if link.get_attribute("href")]
+                        if valid_links:
+                            news_links = valid_links
+                            print(f"[DEBUG] ✓ 셀렉터 성공! {len(valid_links)}개의 유효한 링크 발견")
+                            safe_log("셀렉터 성공", level="info", selector=selector, count=len(valid_links))
+                            break
+                        else:
+                            print(f"[DEBUG] ✗ 셀렉터 {i}: 요소는 있지만 href 없음")
+                    else:
+                        print(f"[DEBUG] ✗ 셀렉터 {i}: 요소 없음")
                 except Exception as e:
                     error_msg = str(e)[:100]
                     print(f"[DEBUG] ✗ 셀렉터 실패: {error_msg}")
-                    safe_log("셀렉터 실패", level="info", selector=selector, error=error_msg)
                     continue
             
             # 모든 셀렉터 실패 시 디버깅 정보 출력
@@ -234,53 +263,60 @@ class NaverNewsScraper(BaseNewsScraper):
             self.driver.get(url)
             wait = WebDriverWait(self.driver, self.config.CRAWLER_TIMEOUT)
 
+            # 페이지 로드 대기
+            time.sleep(2)
+            
             # 제목 추출 (여러 셀렉터 시도)
             title = None
-            title_selectors = [
-                NAVER_SELECTORS["title"],  # 기본 셀렉터
-                "h2.media_end_head_headline",
-                "h3.tit_view",
-                ".article_header h2",
-                ".article_view h3",
-                "h1", "h2"
-            ]
+            title_selectors = NAVER_SELECTORS["title"]
             
             print(f"[DEBUG] 제목 추출 시도 (URL: {url[:60]}...)")
             for i, title_selector in enumerate(title_selectors, 1):
                 try:
-                    title_element = WebDriverWait(self.driver, 2).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, title_selector))
-                    )
-                    if title_element and title_element.text.strip():
-                        title = title_element.text.strip()
-                        print(f"[DEBUG] ✓ 제목 추출 성공! (셀렉터 {i}: {title_selector})")
+                    title_elements = self.driver.find_elements(By.CSS_SELECTOR, title_selector)
+                    if title_elements:
+                        for elem in title_elements:
+                            text = elem.text.strip()
+                            if text and len(text) > 3:  # 최소 3자 이상
+                                title = text
+                                print(f"[DEBUG] ✓ 제목 추출 성공! (셀렉터 {i}: {title_selector})")
+                                break
+                    if title:
                         break
                 except Exception:
                     continue
             
+            if not title:
+                # 페이지 타이틀에서 추출 시도
+                page_title = self.driver.title
+                if page_title:
+                    # " : 네이버 뉴스" 등 제거
+                    import re
+                    title = re.sub(r'\s*[:|-]\s*(네이버|NAVER).*$', '', page_title).strip()
+                    if title:
+                        print(f"[DEBUG] ✓ 페이지 타이틀에서 추출: {title[:50]}...")
+                
             if not title:
                 safe_log("제목 추출 실패 - 모든 셀렉터 실패", level="warning", url=url)
                 title = "제목 추출 실패"
 
             # 본문 추출 (여러 셀렉터 시도)
             content = None
-            content_selectors = [
-                NAVER_SELECTORS["content"],  # #dic_area
-                "#articeBody",
-                ".article_body",
-                ".article_view",
-                "article",
-                ".news_end_body_container",
-                "#newsct_article",
-                "div#articleBodyContents"
-            ]
+            content_selectors = NAVER_SELECTORS["content"]
             
             print(f"[DEBUG] 본문 추출 시도 (총 {len(content_selectors)}개 셀렉터)")
             for i, content_selector in enumerate(content_selectors, 1):
                 try:
                     content_elements = self.driver.find_elements(By.CSS_SELECTOR, content_selector)
                     if content_elements:
-                        content_text = " ".join([elem.text.strip() for elem in content_elements if elem.text.strip()])
+                        # 모든 텍스트 수집
+                        texts = []
+                        for elem in content_elements:
+                            text = elem.text.strip()
+                            if text:
+                                texts.append(text)
+                        
+                        content_text = " ".join(texts)
                         if content_text and len(content_text) > 50:  # 최소 50자 이상
                             content = content_text
                             print(f"[DEBUG] ✓ 본문 추출 성공! (셀렉터 {i}: {content_selector}, 길이: {len(content)}자)")
@@ -293,11 +329,21 @@ class NaverNewsScraper(BaseNewsScraper):
                     print(f"[DEBUG] 셀렉터 {i} ({content_selector}): 에러 - {str(e)[:50]}")
                     continue
             
+            # 마지막 수단: body에서 p 태그 수집
+            if not content:
+                try:
+                    p_elements = self.driver.find_elements(By.TAG_NAME, "p")
+                    if p_elements:
+                        texts = [p.text.strip() for p in p_elements if p.text.strip() and len(p.text.strip()) > 20]
+                        if texts:
+                            content = " ".join(texts[:10])  # 처음 10개 문단
+                            if len(content) > 50:
+                                print(f"[DEBUG] ✓ p 태그에서 본문 추출 (길이: {len(content)}자)")
+                except Exception:
+                    pass
+            
             if not content:
                 safe_log("본문 추출 실패 - 모든 셀렉터 실패", level="error")
-                # 디버깅: 페이지 소스 일부 출력
-                page_source = self.driver.page_source[:2000]
-                print(f"[DEBUG] 페이지 소스 미리보기:\n{page_source}\n...")
                 content = "본문 추출 실패"
 
             # 댓글 추출 (네이버만 지원)
