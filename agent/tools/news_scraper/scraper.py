@@ -18,7 +18,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 from langchain.tools import tool
 
 from common.config import get_config
@@ -36,7 +35,19 @@ class NewsSource(str, Enum):
 # CSS Selector 상수 (유지보수성 향상)
 SELECTORS = {
     "naver": {
-        "news_link": "a.news_tit",
+        "news_link": [
+            # 구체적인 셀렉터부터 시도 (우선순위 순)
+            "a.news_tit",  # 가장 일반적
+            "div.news_area a.news_tit",
+            ".news_contents a.news_tit",
+            "div.news_wrap a.news_tit",
+            ".list_news a.news_tit",
+            "div.group_news a.news_tit",
+            ".news_area a.news_tit",
+            ".api_subject_bx a.news_tit",
+            "a[href*='news.naver.com']",  # URL 기반 필터
+            "div.news_wrap a[href*='news.naver.com']",
+        ],
         "title": "#ct > div.media_end_head.go_trans > div.media_end_head_title > h2",
         "content": "#dic_area",
         "comment_more": ".u_cbox_btn_more",
@@ -75,11 +86,132 @@ class NewsScraperTool:
         chrome_options.add_argument(f"--user-agent={self.config.CRAWLER_USER_AGENT}")
 
         # ChromeDriver 자동 설치 및 설정
+        # ChromeDriverManager의 경로 문제를 근본적으로 해결
+        # 모듈 경로를 기준으로 경로를 결정하는 문제를 해결하기 위해
+        # sys.modules를 조작하거나 직접 다운로드
         try:
-            service = Service(ChromeDriverManager().install())
+            import os
+            import sys
+            import subprocess
+            import shutil
+            import zipfile
+            import urllib.request
+            
+            # 방법 1: 시스템에 설치된 ChromeDriver 사용 시도
+            chromedriver_paths = [
+                "/usr/local/bin/chromedriver",
+                "/usr/bin/chromedriver",
+                "/opt/chromedriver/chromedriver",
+            ]
+            
+            driver_path = None
+            for path in chromedriver_paths:
+                if os.path.exists(path) and os.access(path, os.X_OK):
+                    driver_path = path
+                    safe_log("시스템 ChromeDriver 사용", level="info", path=driver_path)
+                    break
+            
+            # 방법 2: ChromeDriverManager 사용 (경로 강제 지정)
+            # ChromeDriverManager가 모듈 경로를 기준으로 경로를 결정하는 문제를 해결
+            if not driver_path:
+                try:
+                    from webdriver_manager.chrome import ChromeDriverManager
+                    import inspect
+                    
+                    # 임시 디렉토리 사용
+                    temp_dir = "/tmp"
+                    wdm_dir = os.path.join(temp_dir, ".wdm")
+                    os.makedirs(wdm_dir, exist_ok=True)
+                    
+                    # 모든 환경 변수 설정 (ChromeDriverManager가 확인하는 모든 경로)
+                    env_vars = {
+                        'WDM_LOCAL': '1',
+                        'WDM_LOG_LEVEL': '0',
+                        'HOME': temp_dir,
+                        'WDM_PATH': wdm_dir,
+                        'USERPROFILE': temp_dir,
+                        'XDG_CACHE_HOME': wdm_dir,
+                        'XDG_DATA_HOME': wdm_dir,
+                        'XDG_CONFIG_HOME': wdm_dir,
+                    }
+                    for key, value in env_vars.items():
+                        os.environ[key] = value
+                    
+                    # 현재 작업 디렉토리 백업
+                    original_cwd = os.getcwd()
+                    
+                    try:
+                        # 임시 디렉토리로 작업 디렉토리 변경
+                        os.chdir(temp_dir)
+                        
+                        # ChromeDriverManager 초기화 및 설치
+                        # 모듈 파일 경로를 임시로 변경하여 영향 최소화
+                        manager = None
+                        try:
+                            # path 인자 사용 시도
+                            manager = ChromeDriverManager(path=wdm_dir)
+                            driver_path = manager.install()
+                        except (TypeError, AttributeError) as e:
+                            # path 인자 미지원 시 환경 변수만 사용
+                            manager = ChromeDriverManager()
+                            driver_path = manager.install()
+                        
+                        # 다운로드된 경로 확인 및 수정
+                        if driver_path:
+                            # /app/agent/.wdm 경로가 포함되어 있으면 /tmp/.wdm로 복사
+                            if '/app/agent/.wdm' in driver_path or '/app/agent' in driver_path:
+                                old_path = driver_path
+                                if os.path.exists(old_path):
+                                    # 상대 경로 추출
+                                    if '.wdm' in old_path:
+                                        relative_path = old_path.split('.wdm', 1)[1].lstrip('/')
+                                    else:
+                                        relative_path = os.path.basename(old_path)
+                                    
+                                    # 새 경로 생성
+                                    new_driver_path = os.path.join(wdm_dir, relative_path)
+                                    os.makedirs(os.path.dirname(new_driver_path), exist_ok=True)
+                                    
+                                    # 파일 복사
+                                    shutil.copy2(old_path, new_driver_path)
+                                    os.chmod(new_driver_path, 0o755)
+                                    driver_path = new_driver_path
+                                    safe_log("ChromeDriver 경로 수정 완료", level="info", 
+                                            old_path=old_path, new_path=new_driver_path)
+                                else:
+                                    safe_log("원본 ChromeDriver 파일을 찾을 수 없음, 재시도", level="warning", path=old_path)
+                                    # 파일이 없으면 다시 시도 (경로 명시)
+                                    try:
+                                        manager = ChromeDriverManager(path=wdm_dir)
+                                        driver_path = manager.install()
+                                    except (TypeError, AttributeError):
+                                        manager = ChromeDriverManager()
+                                        driver_path = manager.install()
+                        
+                    finally:
+                        # 원래 상태로 복원
+                        try:
+                            os.chdir(original_cwd)
+                        except Exception:
+                            pass
+                            
+                except ImportError:
+                    safe_log("webdriver-manager를 사용할 수 없음", level="warning")
+                    raise RuntimeError("ChromeDriver를 찾을 수 없습니다. webdriver-manager가 필요합니다.")
+            
+            # ChromeDriver 파일 존재 및 실행 권한 확인
+            if not driver_path or not os.path.exists(driver_path):
+                raise RuntimeError(f"ChromeDriver를 찾을 수 없습니다: {driver_path}")
+            
+            # 실행 권한 확인 및 설정
+            if not os.access(driver_path, os.X_OK):
+                os.chmod(driver_path, 0o755)
+            
+            # Service 생성 및 WebDriver 초기화
+            service = Service(driver_path)
             driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.implicitly_wait(10)
-            safe_log("Chrome WebDriver 초기화 완료", level="info")
+            safe_log("Chrome WebDriver 초기화 완료", level="info", driver_path=driver_path)
             return driver
         except Exception as e:
             safe_log("Chrome WebDriver 초기화 실패", level="error", error=str(e))
@@ -108,32 +240,139 @@ class NewsScraperTool:
             # 네이버 뉴스 검색 URL (URL 인코딩)
             encoded_keyword = quote(keyword)
             search_url = f"https://search.naver.com/search.naver?where=news&query={encoded_keyword}"
-            safe_log("네이버 뉴스 검색 시작", level="info", keyword=keyword)
+            print(f"[DEBUG] 네이버 뉴스 검색 시작: keyword={keyword}, url={search_url}")
+            safe_log("네이버 뉴스 검색 시작", level="info", keyword=keyword, url=search_url)
 
             self.driver.get(search_url)
+            print(f"[DEBUG] 페이지 로드 완료, 2초 대기 중...")
+            time.sleep(3)  # 페이지 로드 대기 (3초로 증가)
+
+            # 페이지 로드 확인
+            current_url = self.driver.current_url
+            page_title = self.driver.title
+            print(f"[DEBUG] 현재 URL: {current_url}, 페이지 제목: {page_title}")
+            safe_log("페이지 로드 완료", level="info", current_url=current_url, page_title=page_title)
 
             # Explicit Wait: 검색 결과가 로드될 때까지 대기
             wait = WebDriverWait(self.driver, self.config.CRAWLER_TIMEOUT)
 
-            # 뉴스 기사 링크들이 나타날 때까지 대기
-            news_links = wait.until(
-                EC.presence_of_all_elements_located(
-                    (By.CSS_SELECTOR, SELECTORS["naver"]["news_link"])
-                )
-            )
+            # 여러 셀렉터 시도 (네이버가 구조를 자주 변경함)
+            news_links = []
+            selectors = SELECTORS["naver"]["news_link"]
+            
+            print(f"[DEBUG] 총 {len(selectors)}개의 셀렉터 시도")
+            for i, selector in enumerate(selectors, 1):
+                try:
+                    print(f"[DEBUG] 셀렉터 {i}/{len(selectors)} 시도: {selector}")
+                    safe_log("셀렉터 시도", level="info", selector=selector, attempt=f"{i}/{len(selectors)}")
+                    
+                    links = wait.until(
+                        EC.presence_of_all_elements_located(
+                            (By.CSS_SELECTOR, selector)
+                        )
+                    )
+                    
+                    if links and len(links) > 0:
+                        news_links = links
+                        print(f"[DEBUG] ✓ 셀렉터 성공! {len(links)}개의 링크 발견")
+                        safe_log("셀렉터 성공", level="info", selector=selector, count=len(links))
+                        break
+                except Exception as e:
+                    error_msg = str(e)[:100]
+                    print(f"[DEBUG] ✗ 셀렉터 실패: {error_msg}")
+                    safe_log("셀렉터 실패", level="info", selector=selector, error=error_msg)
+                    continue
+            
+            # 모든 셀렉터 실패 시 디버깅 정보 출력
+            if not news_links:
+                print(f"[DEBUG] !! 모든 셀렉터 실패 !!")
+                # 페이지 소스 일부 출력 (디버깅용)
+                page_source = self.driver.page_source
+                print(f"[DEBUG] 페이지 소스 길이: {len(page_source)}")
+                print(f"[DEBUG] 페이지 소스 미리보기:\n{page_source[:2000]}\n...")
+                
+                safe_log("페이지 로드 실패 - 디버깅 정보", level="error", 
+                        page_title=page_title,
+                        page_source_preview=page_source[:1000],
+                        current_url=current_url,
+                        page_source_length=len(page_source))
+                
+                # 스크린샷 저장 (디버깅용)
+                try:
+                    screenshot_path = "/tmp/naver_search_debug.png"
+                    self.driver.save_screenshot(screenshot_path)
+                    print(f"[DEBUG] 스크린샷 저장: {screenshot_path}")
+                    safe_log("디버깅 스크린샷 저장", level="info", path=screenshot_path)
+                except Exception as ss_error:
+                    print(f"[DEBUG] 스크린샷 저장 실패: {ss_error}")
+                
+                return []
 
             # URL 목록 추출
             article_urls = []
-            for link in news_links[:max_articles]:
-                href = link.get_attribute("href")
-                if href and validate_url(href) and "news.naver.com" in href:
-                    article_urls.append(href)
+            print(f"[DEBUG] {len(news_links)}개의 링크에서 URL 추출 시작")
+            
+            # 디버깅: 처음 5개 링크의 전체 URL 출력
+            for i, link in enumerate(news_links[:5], 1):
+                try:
+                    href = link.get_attribute("href")
+                    if href:
+                        print(f"[DEBUG] 샘플 링크 {i} (전체): {href}")
+                except Exception:
+                    pass
+            
+            for i, link in enumerate(news_links[:max_articles * 3], 1):  # 더 많이 수집 후 필터링
+                try:
+                    href = link.get_attribute("href")
+                    if href:
+                        # 네이버 뉴스 URL 필터링 (더 관대하게)
+                        if validate_url(href):
+                            # 여러 패턴 확인
+                            is_news_url = False
+                            if "news.naver.com" in href:
+                                is_news_url = True
+                                print(f"[DEBUG] ✓ news.naver.com 패턴 매칭: {href[:80]}...")
+                            elif "n.news.naver.com" in href:
+                                is_news_url = True
+                                print(f"[DEBUG] ✓ n.news.naver.com 패턴 매칭: {href[:80]}...")
+                            elif "/read.nhn" in href or "/read.naver" in href:
+                                is_news_url = True
+                                print(f"[DEBUG] ✓ /read 패턴 매칭: {href[:80]}...")
+                            
+                            if is_news_url:
+                                article_urls.append(href)
+                                
+                        if len(article_urls) >= max_articles:
+                            break
+                except Exception as e:
+                    print(f"[DEBUG] 링크 추출 실패: {e}")
+                    continue
 
+            print(f"[DEBUG] 최종 수집된 URL 개수: {len(article_urls)}")
+            
+            # URL이 0개면 페이지 소스를 더 자세히 출력
+            if len(article_urls) == 0:
+                print(f"[DEBUG] !! 뉴스 URL이 하나도 없음. 페이지 HTML 샘플:")
+                try:
+                    # 뉴스 관련 요소 찾기
+                    news_elements = self.driver.find_elements(By.CSS_SELECTOR, "div[class*='news'], div[class*='article']")
+                    print(f"[DEBUG] 뉴스 관련 div 개수: {len(news_elements)}")
+                    if news_elements:
+                        print(f"[DEBUG] 첫 번째 뉴스 div HTML:\n{news_elements[0].get_attribute('outerHTML')[:1000]}")
+                except Exception as e:
+                    print(f"[DEBUG] HTML 샘플 추출 실패: {e}")
+            
             safe_log("네이버 기사 URL 수집 완료", level="info", count=len(article_urls))
             return article_urls
 
         except Exception as e:
-            safe_log("네이버 뉴스 검색 오류", level="error", error=str(e))
+            import traceback
+            error_details = {
+                'error': str(e),
+                'error_type': type(e).__name__,
+                'traceback': traceback.format_exc()
+            }
+            safe_log("네이버 뉴스 검색 오류", level="error", **error_details)
             return []
 
     def search_google_news(self, keyword: str, max_articles: int = 5) -> List[str]:
@@ -225,7 +464,38 @@ class NewsScraperTool:
         """
         all_urls = []
         
+        # 소스 매핑 (다양한 이름 지원)
+        source_mapping = {
+            "네이버": "네이버",
+            "naver": "네이버",
+            "구글": "구글",
+            "google": "구글",
+            # 지원하지 않는 소스는 네이버로 매핑 (기본값)
+            "다음": "네이버",
+            "KBS": "네이버",
+            "SBS": "네이버",
+            "MBC": "네이버",
+            "YTN": "네이버",
+        }
+        
+        # 지원되는 소스만 필터링
+        valid_sources = []
         for source in sources:
+            normalized_source = source_mapping.get(source, None)
+            if normalized_source:
+                if normalized_source not in valid_sources:
+                    valid_sources.append(normalized_source)
+                if source != normalized_source:
+                    safe_log(f"소스 매핑: {source} -> {normalized_source}", level="info")
+            else:
+                safe_log("지원하지 않는 뉴스 소스", level="warning", source=source)
+        
+        # 지원되는 소스가 없으면 네이버를 기본값으로 사용
+        if not valid_sources:
+            valid_sources = ["네이버"]
+            safe_log("지원되는 소스가 없어 네이버를 기본값으로 사용", level="info")
+        
+        for source in valid_sources:
             try:
                 if source == "네이버" or source == NewsSource.NAVER.value:
                     urls = self.search_naver_news(keyword, max_articles)
@@ -241,7 +511,7 @@ class NewsScraperTool:
 
         # 중복 제거
         unique_urls = list(dict.fromkeys(all_urls))  # 순서 유지하면서 중복 제거
-        safe_log("전체 기사 URL 수집 완료", level="info", total=len(unique_urls), sources=sources)
+        safe_log("전체 기사 URL 수집 완료", level="info", total=len(unique_urls), sources=valid_sources)
         return unique_urls
 
     def extract_with_selenium(self, url: str, source: str = "naver") -> Dict[str, Any]:

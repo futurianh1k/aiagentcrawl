@@ -26,11 +26,21 @@ export default function ArticleList({ articles }: ArticleListProps) {
 
   const articlesPerPage = 5;
 
+  // 감정 레이블 정규화 함수
+  const normalizeSentimentLabel = (label?: string): string => {
+    if (!label) return 'neutral';
+    const normalized = label.toLowerCase();
+    if (normalized === 'positive' || label === '긍정' || label === '긍정적') return 'positive';
+    if (normalized === 'negative' || label === '부정' || label === '부정적') return 'negative';
+    return 'neutral';
+  };
+
   // 필터링 및 정렬
   const filteredArticles = articles
     .filter(article => {
       if (selectedSentiment === 'all') return true;
-      return article.sentiment_label === selectedSentiment;
+      const normalized = normalizeSentimentLabel(article.sentiment_label);
+      return normalized === selectedSentiment;
     })
     .sort((a, b) => {
       switch (sortBy) {
@@ -52,30 +62,43 @@ export default function ArticleList({ articles }: ArticleListProps) {
 
   const getSentimentIcon = (label?: string, score?: number) => {
     if (!label) return <Minus className="w-4 h-4 text-gray-400" />;
-
-    switch (label) {
-      case 'positive':
-        return <TrendingUp className="w-4 h-4 text-green-600" />;
-      case 'negative':
-        return <TrendingDown className="w-4 h-4 text-red-600" />;
-      default:
-        return <Minus className="w-4 h-4 text-gray-400" />;
+    
+    // 한국어 레이블도 처리
+    const normalizedLabel = label.toLowerCase();
+    if (normalizedLabel === 'positive' || label === '긍정' || label === '긍정적') {
+      return <TrendingUp className="w-4 h-4 text-green-600" />;
+    } else if (normalizedLabel === 'negative' || label === '부정' || label === '부정적') {
+      return <TrendingDown className="w-4 h-4 text-red-600" />;
+    } else {
+      return <Minus className="w-4 h-4 text-gray-400" />;
     }
   };
 
   const getSentimentColor = (label?: string) => {
-    switch (label) {
-      case 'positive': return 'text-green-700 bg-green-100';
-      case 'negative': return 'text-red-700 bg-red-100';
-      default: return 'text-gray-700 bg-gray-100';
+    if (!label) return 'text-gray-700 bg-gray-100';
+    
+    // 한국어 레이블도 처리
+    const normalizedLabel = label.toLowerCase();
+    if (normalizedLabel === 'positive' || label === '긍정' || label === '긍정적') {
+      return 'text-green-700 bg-green-100';
+    } else if (normalizedLabel === 'negative' || label === '부정' || label === '부정적') {
+      return 'text-red-700 bg-red-100';
+    } else {
+      return 'text-gray-700 bg-gray-100';
     }
   };
 
   const getSentimentText = (label?: string) => {
-    switch (label) {
-      case 'positive': return '긍정';
-      case 'negative': return '부정';
-      default: return '중립';
+    if (!label) return '중립';
+    
+    // 한국어 레이블도 처리
+    const normalizedLabel = label.toLowerCase();
+    if (normalizedLabel === 'positive' || label === '긍정' || label === '긍정적') {
+      return '긍정';
+    } else if (normalizedLabel === 'negative' || label === '부정' || label === '부정적') {
+      return '부정';
+    } else {
+      return '중립';
     }
   };
 

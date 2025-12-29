@@ -33,6 +33,7 @@ except ImportError:
 from common.config import get_config
 from common.utils import safe_log, validate_input
 from agent.tools import scrape_news, analyze_sentiment, analyze_news_trend
+from agent.tools.news_scraper import NewsScraperTool
 
 
 class NewsAnalysisAgent:
@@ -131,7 +132,73 @@ class NewsAnalysisAgent:
 
         try:
             # 1단계: 뉴스 수집
-            articles_data = scrape_news(keyword, sources, max_articles)
+            # scrape_news가 @tool 데코레이터로 장식되어 있어 직접 호출 불가
+            # NewsScraperTool을 직접 사용
+            scraper = NewsScraperTool()
+            articles_data = []
+            
+            try:
+                # 소스 필터링 및 매핑 (다양한 소스 이름 지원)
+                source_mapping = {
+                    "네이버": "네이버",
+                    "naver": "네이버",
+                    "구글": "구글",
+                    "google": "구글",
+                    # 지원하지 않는 소스는 네이버로 매핑
+                    "다음": "네이버",
+                    "KBS": "네이버",
+                    "SBS": "네이버",
+                    "MBC": "네이버",
+                    "YTN": "네이버",
+                }
+                
+                valid_sources = []
+                for source in (sources or ["네이버"]):
+                    normalized_source = source_mapping.get(source, None)
+                    if normalized_source:
+                        if normalized_source not in valid_sources:
+                            valid_sources.append(normalized_source)
+                        if source != normalized_source:
+                            safe_log(f"소스 매핑: {source} -> {normalized_source}", level="info")
+                    else:
+                        safe_log("지원하지 않는 뉴스 소스", level="warning", source=source)
+                
+                if not valid_sources:
+                    valid_sources = ["네이버"]  # 기본값
+                
+                # 뉴스 검색 및 크롤링
+                article_urls = scraper.search_news(keyword, valid_sources, max_articles)
+                
+                if not article_urls:
+                    return {
+                        "error": f"'{keyword}' 키워드로 기사를 찾을 수 없습니다.",
+                        "keyword": keyword,
+                        "sources": valid_sources
+                    }
+                
+                # 각 기사 상세 정보 추출
+                for i, url in enumerate(article_urls, 1):
+                    safe_log(f"기사 처리 중 ({i}/{len(article_urls)})", level="info")
+                    
+                    # URL에서 소스 판단
+                    source = "naver" if "naver.com" in url else "google"
+                    
+                    try:
+                        article = scraper.scrape_article(url, source)
+                        article_dict = article.to_dict()
+                        article_dict["keyword"] = keyword
+                        article_dict["source"] = "네이버" if source == "naver" else "구글"
+                        articles_data.append(article_dict)
+                    except Exception as e:
+                        safe_log(f"기사 크롤링 실패: {url}", level="warning", error=str(e))
+                        continue
+                    
+                    # Rate Limit 준수
+                    import time
+                    time.sleep(1)
+                    
+            finally:
+                scraper.cleanup()
 
             if not articles_data or (len(articles_data) == 1 and "error" in articles_data[0]):
                 return {

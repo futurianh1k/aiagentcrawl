@@ -76,6 +76,19 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --d
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
+# ChromeDriver 직접 다운로드 및 설치 (ChromeDriverManager 우회)
+# Chrome 버전과 호환되는 ChromeDriver 설치
+RUN CHROME_VERSION=$(google-chrome --version | sed 's/Google Chrome //g' | cut -d. -f1) \
+    && echo "Chrome version: $CHROME_VERSION" \
+    && CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_$CHROME_VERSION") \
+    && echo "ChromeDriver version: $CHROMEDRIVER_VERSION" \
+    && wget -q "https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip" -O /tmp/chromedriver.zip \
+    && unzip -q /tmp/chromedriver.zip -d /tmp \
+    && mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm -rf /tmp/chromedriver.zip /tmp/chromedriver-linux64 \
+    && chromedriver --version
+
 # 빌드 단계에서 설치된 Python 패키지 복사
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
@@ -85,6 +98,9 @@ COPY common/ ./common/
 
 # Agent 코드 복사
 COPY agent/ ./agent/
+
+# /tmp/.wdm 디렉토리 미리 생성 및 권한 설정 (ChromeDriverManager용)
+RUN mkdir -p /tmp/.wdm && chmod 777 /tmp/.wdm
 
 # 앱 사용자로 전환
 USER appuser
@@ -96,6 +112,11 @@ ENV PYTHONUNBUFFERED=1
 ENV DISPLAY=:99
 # FutureWarning 억제 (google.generativeai deprecated 경고)
 ENV PYTHONWARNINGS=ignore::FutureWarning:google.generativeai
+# ChromeDriverManager 환경 변수 (권한 문제 해결)
+ENV WDM_LOCAL=1
+ENV WDM_LOG_LEVEL=0
+ENV HOME=/tmp
+ENV WDM_PATH=/tmp/.wdm
 
 # 헬스체크 추가
 HEALTHCHECK --interval=30s --timeout=30s --start-period=30s --retries=3 \

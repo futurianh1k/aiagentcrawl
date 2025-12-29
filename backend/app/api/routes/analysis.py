@@ -39,9 +39,9 @@ async def get_analysis_result(
             "url": article.url,
             "source": article.source,
             "published_at": article.published_at,
-            "sentiment_score": article.sentiment_score,
-            "sentiment_label": article.sentiment_label,
-            "confidence": article.confidence,
+            "sentiment_score": article.sentiment_score or 0.0,
+            "sentiment_label": article.sentiment_label,  # 나중에 정규화됨
+            "confidence": article.confidence or 0.0,
             "comment_count": comment_count
         })
 
@@ -51,16 +51,48 @@ async def get_analysis_result(
         {
             "keyword": keyword.keyword,
             "frequency": keyword.frequency,
-            "sentiment_score": keyword.sentiment_score
+            "sentiment_score": keyword.sentiment_score or 0.0
         }
         for keyword in keywords
     ]
+    
+    # 키워드가 없으면 기본 키워드 생성 (검색 키워드 포함)
+    if not keywords_data and articles_data:
+        keywords_data = [
+            {
+                "keyword": session.keyword,
+                "frequency": len(articles_data),
+                "sentiment_score": 0.0
+            }
+        ]
 
-    # 감정 분포 계산
+    # 감정 분포 계산 (한국어/영어 레이블 모두 처리)
     sentiment_distribution = {"positive": 0, "negative": 0, "neutral": 0}
-    for article in articles:
-        label = article.sentiment_label or "neutral"
-        sentiment_distribution[label] = sentiment_distribution.get(label, 0) + 1
+    
+    # 한국어 레이블을 영어로 매핑하는 함수
+    def normalize_sentiment_label(label: str) -> str:
+        if not label:
+            return "neutral"
+        label_lower = label.lower()
+        # 한국어 레이블 처리
+        if label == "긍정" or "positive" in label_lower or "긍정적" in label:
+            return "positive"
+        elif label == "부정" or "negative" in label_lower or "부정적" in label:
+            return "negative"
+        elif label == "중립" or "neutral" in label_lower or "중립적" in label:
+            return "neutral"
+        # 이미 영어인 경우
+        elif label_lower in ["positive", "negative", "neutral"]:
+            return label_lower
+        else:
+            return "neutral"
+    
+    # 기사 데이터에 정규화된 감정 레이블 추가 및 감정 분포 계산
+    for article_data in articles_data:
+        original_label = article_data.get("sentiment_label")
+        normalized_label = normalize_sentiment_label(original_label)
+        article_data["sentiment_label"] = normalized_label  # 영어로 변환된 레이블로 업데이트
+        sentiment_distribution[normalized_label] = sentiment_distribution.get(normalized_label, 0) + 1
 
     return AnalysisResponse(
         session_id=session.id,

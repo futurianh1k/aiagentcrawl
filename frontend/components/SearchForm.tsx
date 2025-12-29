@@ -10,7 +10,7 @@ interface SearchFormProps {
 
 export default function SearchForm({ onAnalyze, isLoading }: SearchFormProps) {
   const [keyword, setKeyword] = useState('');
-  const [sources, setSources] = useState<string[]>(['네이버', '다음']);
+  const [sources, setSources] = useState<string[]>(['네이버']);
   const [maxArticles, setMaxArticles] = useState(20);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -35,7 +35,8 @@ export default function SearchForm({ onAnalyze, isLoading }: SearchFormProps) {
     }
   };
 
-  const availableSources = ['네이버', '다음', 'KBS', 'SBS', 'MBC', 'YTN'];
+  // 지원되는 뉴스 소스 (네이버, 구글만 실제 크롤링 지원, 나머지는 네이버로 매핑)
+  const availableSources = ['네이버', '구글'];
 
   return (
     <div className="card p-8 max-w-2xl mx-auto">
