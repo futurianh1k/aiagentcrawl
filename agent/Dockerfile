@@ -92,11 +92,13 @@ RUN CHROME_VERSION=$(google-chrome --version | sed 's/Google Chrome //g' | cut -
     && rm -rf /tmp/chromedriver.zip /tmp/chromedriver-linux64 \
     && chromedriver --version
 
-# Playwright 브라우저 설치 (Chromium만 - 용량 절약)
-# root 사용자로 설치 후 권한 설정
+# Playwright 브라우저 설치 (전역 경로에 설치하여 모든 사용자가 접근 가능)
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 RUN pip install --no-cache-dir playwright>=1.40.0 \
+    && mkdir -p /opt/playwright-browsers \
     && playwright install chromium \
-    && playwright install-deps chromium
+    && playwright install-deps chromium \
+    && chmod -R 755 /opt/playwright-browsers
 
 # 빌드 단계에서 설치된 Python 패키지 복사
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
@@ -126,6 +128,8 @@ ENV WDM_LOCAL=1
 ENV WDM_LOG_LEVEL=0
 ENV HOME=/tmp
 ENV WDM_PATH=/tmp/.wdm
+# Playwright 브라우저 경로 (appuser도 접근 가능)
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 
 # 헬스체크 추가
 HEALTHCHECK --interval=30s --timeout=30s --start-period=30s --retries=3 \
