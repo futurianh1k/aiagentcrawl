@@ -19,14 +19,49 @@ from .models import NewsArticle, Comment
 
 
 # 구글 뉴스 CSS Selector 상수
+# 구글 뉴스는 구조가 자주 변경되므로 다양한 셀렉터 시도
 GOOGLE_SELECTORS = {
     "news_link": [
+        # 최신 구글 뉴스 구조 (2024)
         "article a[href*='/articles/']",
         "article h3 a",
-        "a[data-ved][href*='news']",
-        "div[data-ved] a[href*='news']",
+        "article h4 a",
+        "article a[href^='./articles/']",
+        "article a[href*='articles']",
+        
+        # 클래스 기반 셀렉터
         ".JtKRv a",
+        ".VDXfz a",
+        ".Yv5pGd a",
+        ".gPFEn a",
+        ".WwrzSb a",
+        ".ipQwMb a",
+        ".DY5T1d a",
+        
+        # data 속성 기반
+        "a[data-ved][href*='news']",
+        "a[data-ved][href*='articles']",
+        "div[data-ved] a[href*='news']",
+        "div[data-ved] a[href*='articles']",
+        
+        # 제목 태그 기반
         "h3 a[href*='news']",
+        "h3 a[href*='articles']",
+        "h4 a[href*='news']",
+        "h4 a[href*='articles']",
+        
+        # 일반적인 article 내부 링크
+        "article a",
+        "article h3 a",
+        "article h4 a",
+        
+        # 더 넓은 범위의 셀렉터
+        "div[jsmodel] a[href*='articles']",
+        "div[jscontroller] a[href*='articles']",
+        "c-wiz a[href*='articles']",
+        
+        # 최후의 수단: 모든 article 내부의 모든 링크
+        "article a[href]",
     ],
     "title": [
         "h1",
@@ -77,7 +112,15 @@ class GoogleNewsScraper(BaseNewsScraper):
 
             self.driver.get(search_url)
             print(f"[DEBUG] 페이지 로드 완료, 3초 대기 중...")
-            time.sleep(3)  # 구글 뉴스는 동적 로딩이 많아 추가 대기
+            time.sleep(3)  # 대기 시간 단축
+
+            # 페이지 스크롤하여 동적 콘텐츠 로드 (간소화)
+            try:
+                print(f"[DEBUG] 페이지 스크롤 중...")
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
+                time.sleep(1)
+            except Exception as e:
+                print(f"[DEBUG] 스크롤 실패 (무시): {e}")
 
             # 페이지 로드 확인
             current_url = self.driver.current_url
@@ -98,113 +141,141 @@ class GoogleNewsScraper(BaseNewsScraper):
                     print(f"[DEBUG] 셀렉터 {i}/{len(selectors)} 시도: {selector}")
                     safe_log("셀렉터 시도", level="info", selector=selector, attempt=f"{i}/{len(selectors)}")
                     
-                    # 요소가 나타날 때까지 대기
-                    links = wait.until(
-                        EC.presence_of_all_elements_located(
-                            (By.CSS_SELECTOR, selector)
-                        )
-                    )
+                    # 먼저 요소가 존재하는지 확인 (presence_of_all_elements_located는 최소 1개 필요)
+                    # find_elements를 사용하여 0개여도 에러가 나지 않도록
+                    links = self.driver.find_elements(By.CSS_SELECTOR, selector)
                     
                     if links and len(links) > 0:
-                        news_links = links
-                        print(f"[DEBUG] ✓ 셀렉터 성공! {len(links)}개의 링크 발견")
-                        safe_log("셀렉터 성공", level="info", selector=selector, count=len(links))
-                        break
+                        # 실제로 href 속성이 있는 링크만 필터링
+                        valid_links = [link for link in links if link.get_attribute("href")]
+                        if valid_links:
+                            news_links = valid_links
+                            print(f"[DEBUG] ✓ 셀렉터 성공! {len(valid_links)}개의 유효한 링크 발견 (전체: {len(links)})")
+                            safe_log("셀렉터 성공", level="info", selector=selector, count=len(valid_links), total=len(links))
+                            break
+                        else:
+                            print(f"[DEBUG] ✗ 셀렉터 {i}: 요소는 있지만 href가 없음")
+                    else:
+                        print(f"[DEBUG] ✗ 셀렉터 {i}: 요소 없음")
                 except Exception as e:
                     error_msg = str(e)[:100]
                     print(f"[DEBUG] ✗ 셀렉터 실패: {error_msg}")
                     safe_log("셀렉터 실패", level="info", selector=selector, error=error_msg)
                     continue
             
-            # 모든 셀렉터 실패 시 디버깅 정보 출력
+            # 모든 셀렉터 실패 시 추가 시도
             if not news_links:
-                print(f"[DEBUG] !! 모든 셀렉터 실패 !!")
-                # 페이지 소스 일부 출력 (디버깅용)
-                page_source = self.driver.page_source
-                print(f"[DEBUG] 페이지 소스 길이: {len(page_source)}")
-                print(f"[DEBUG] 페이지 소스 미리보기:\n{page_source[:2000]}\n...")
+                print(f"[DEBUG] !! 모든 셀렉터 실패, 추가 시도 중...")
                 
-                safe_log("구글 뉴스 페이지 로드 실패 - 디버깅 정보", level="error", 
-                        page_title=page_title,
-                        page_source_preview=page_source[:1000],
-                        current_url=current_url,
-                        page_source_length=len(page_source))
-                
-                # 스크린샷 저장 (디버깅용)
+                # 1. article 태그가 있는지 확인
                 try:
-                    screenshot_path = "/tmp/google_search_debug.png"
-                    self.driver.save_screenshot(screenshot_path)
-                    print(f"[DEBUG] 스크린샷 저장: {screenshot_path}")
-                    safe_log("디버깅 스크린샷 저장", level="info", path=screenshot_path)
-                except Exception as ss_error:
-                    print(f"[DEBUG] 스크린샷 저장 실패: {ss_error}")
+                    articles = self.driver.find_elements(By.TAG_NAME, "article")
+                    print(f"[DEBUG] article 태그 개수: {len(articles)}")
+                    if articles:
+                        # article 내부의 모든 링크 찾기
+                        for article in articles[:30]:  # 처음 30개 확인
+                            try:
+                                links_in_article = article.find_elements(By.TAG_NAME, "a")
+                                for link in links_in_article:
+                                    href = link.get_attribute("href")
+                                    if href:
+                                        # 구글 뉴스 리디렉션 URL이 아닌 실제 외부 URL만 수집
+                                        if "news.google.com" not in href or "/articles/" in href:
+                                            if href not in [l.get_attribute("href") for l in news_links if l]:
+                                                news_links.append(link)
+                                                print(f"[DEBUG] ✓ article 내부에서 링크 발견: {href[:80]}...")
+                            except Exception:
+                                continue
+                except Exception as e:
+                    print(f"[DEBUG] article 태그 검색 실패: {e}")
                 
-                return []
+                # 2. 모든 a 태그에서 href가 있는 것 찾기
+                if not news_links:
+                    print(f"[DEBUG] 모든 a 태그 검색 시도...")
+                    try:
+                        all_links = self.driver.find_elements(By.TAG_NAME, "a")
+                        print(f"[DEBUG] 전체 a 태그 개수: {len(all_links)}")
+                        for link in all_links[:100]:  # 처음 100개만 확인
+                            try:
+                                href = link.get_attribute("href")
+                                if href and validate_url(href):
+                                    # 구글 뉴스가 아닌 외부 사이트 URL만 수집
+                                    if "news.google.com" not in href:
+                                        # 중복 체크
+                                        if href not in [l.get_attribute("href") for l in news_links if l]:
+                                            news_links.append(link)
+                                            print(f"[DEBUG] ✓ a 태그에서 링크 발견: {href[:80]}...")
+                                            if len(news_links) >= max_articles:
+                                                break
+                            except Exception:
+                                continue
+                    except Exception as e:
+                        print(f"[DEBUG] a 태그 검색 실패: {e}")
+                
+                # 여전히 실패하면 디버깅 정보 출력
+                if not news_links:
+                    print(f"[DEBUG] !! 최종 실패 - 디버깅 정보 수집 중...")
+                    # 페이지 소스 일부 출력 (디버깅용)
+                    page_source = self.driver.page_source
+                    print(f"[DEBUG] 페이지 소스 길이: {len(page_source)}")
+                    
+                    # article 태그가 있는지 확인
+                    try:
+                        article_count = len(self.driver.find_elements(By.TAG_NAME, "article"))
+                        print(f"[DEBUG] article 태그 개수: {article_count}")
+                    except Exception:
+                        pass
+                    
+                    # a 태그 개수 확인
+                    try:
+                        a_count = len(self.driver.find_elements(By.TAG_NAME, "a"))
+                        print(f"[DEBUG] a 태그 개수: {a_count}")
+                    except Exception:
+                        pass
+                    
+                    safe_log("구글 뉴스 페이지 로드 실패 - 디버깅 정보", level="error", 
+                            page_title=page_title,
+                            page_source_preview=page_source[:1000],
+                            current_url=current_url,
+                            page_source_length=len(page_source))
+                    
+                    # 스크린샷 저장 (디버깅용)
+                    try:
+                        screenshot_path = "/tmp/google_search_debug.png"
+                        self.driver.save_screenshot(screenshot_path)
+                        print(f"[DEBUG] 스크린샷 저장: {screenshot_path}")
+                        safe_log("디버깅 스크린샷 저장", level="info", path=screenshot_path)
+                    except Exception as ss_error:
+                        print(f"[DEBUG] 스크린샷 저장 실패: {ss_error}")
+                    
+                    return []
 
             # URL 목록 추출
             article_urls = []
             seen_urls = set()  # 중복 제거
             print(f"[DEBUG] {len(news_links)}개의 링크에서 URL 추출 시작")
             
-            for i, link in enumerate(news_links[:max_articles * 5], 1):  # 더 많이 수집 후 필터링
+            # 간소화된 URL 추출 (타임아웃 방지)
+            for i, link in enumerate(news_links[:max_articles * 3], 1):
                 try:
-                    # href 속성과 실제 링크 URL 모두 확인
                     href = link.get_attribute("href")
                     if not href:
-                        # data-ved 속성이 있는 경우 클릭하여 실제 URL 얻기 시도
-                        try:
-                            link.click()
-                            time.sleep(1)  # 리디렉션 대기
-                            href = self.driver.current_url
-                            # 뒤로 가기
-                            self.driver.back()
-                            time.sleep(0.5)
-                        except Exception:
-                            continue
+                        continue
                     
                     if href and validate_url(href):
-                        # 구글 뉴스 URL 정규화
-                        if href.startswith("./"):
-                            # 상대 경로 처리
-                            href = f"https://news.google.com{href[1:]}"
+                        # 구글 뉴스 리디렉션 URL은 건너뛰기 (시간 소모 방지)
+                        if "news.google.com" in href:
+                            print(f"[DEBUG] ✗ 구글 뉴스 URL 건너뛰기: {href[:60]}...")
+                            continue
                         
-                        # 구글 뉴스 리디렉션 URL 처리
-                        # news.google.com/articles/... 형태는 실제 기사 URL로 리디렉션됨
-                        # 클릭하여 실제 URL을 얻거나, data-ved 속성으로 실제 URL 추출 시도
-                        if "news.google.com" in href and "/articles/" in href:
-                            # 구글 뉴스 리디렉션 URL - 클릭하여 실제 URL 얻기
-                            try:
-                                # 링크를 새 탭에서 열기
-                                original_url = self.driver.current_url
-                                link.click()
-                                time.sleep(2)  # 리디렉션 대기
-                                actual_url = self.driver.current_url
-                                
-                                # 실제 기사 URL인지 확인 (구글 뉴스가 아닌 외부 사이트)
-                                if "news.google.com" not in actual_url and actual_url != original_url:
-                                    if actual_url not in seen_urls:
-                                        seen_urls.add(actual_url)
-                                        article_urls.append(actual_url)
-                                        print(f"[DEBUG] ✓ 기사 URL 수집 (리디렉션): {actual_url[:80]}...")
-                                        
-                                        if len(article_urls) >= max_articles:
-                                            break
-                                
-                                # 원래 페이지로 돌아가기
-                                self.driver.back()
-                                time.sleep(1)
-                            except Exception as e:
-                                print(f"[DEBUG] 리디렉션 URL 처리 실패: {e}")
-                                continue
-                        elif "news.google.com" not in href:
-                            # 이미 외부 사이트 URL인 경우
-                            if href not in seen_urls:
-                                seen_urls.add(href)
-                                article_urls.append(href)
-                                print(f"[DEBUG] ✓ 기사 URL 수집: {href[:80]}...")
-                                
-                                if len(article_urls) >= max_articles:
-                                    break
+                        # 외부 사이트 URL만 수집
+                        if href not in seen_urls:
+                            seen_urls.add(href)
+                            article_urls.append(href)
+                            print(f"[DEBUG] ✓ 기사 URL 수집: {href[:80]}...")
+                            
+                            if len(article_urls) >= max_articles:
+                                break
                 except Exception as e:
                     print(f"[DEBUG] 링크 추출 실패: {e}")
                     continue
