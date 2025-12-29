@@ -89,18 +89,20 @@ async def analyze_news(
 
         # 키워드 저장
         keywords_data = []
-        for keyword_data in analysis_result["keywords"]:
+        for keyword_data in analysis_result.get("keywords", []):
+            # sentiment_score가 없을 경우 기본값 0.0 사용
+            sentiment_score = keyword_data.get("sentiment_score", 0.0)
             keyword = Keyword(
                 session_id=session.id,
-                keyword=keyword_data["keyword"],
-                frequency=keyword_data["frequency"],
-                sentiment_score=keyword_data["sentiment_score"]
+                keyword=keyword_data.get("keyword", ""),
+                frequency=keyword_data.get("frequency", 1),
+                sentiment_score=sentiment_score
             )
             db.add(keyword)
             keywords_data.append({
-                "keyword": keyword_data["keyword"],
-                "frequency": keyword_data["frequency"],
-                "sentiment_score": keyword_data["sentiment_score"]
+                "keyword": keyword_data.get("keyword", ""),
+                "frequency": keyword_data.get("frequency", 1),
+                "sentiment_score": sentiment_score
             })
 
         # 세션 상태 업데이트
