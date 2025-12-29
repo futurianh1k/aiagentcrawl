@@ -543,35 +543,70 @@ class NewsScraperTool:
 
             selectors = SELECTORS.get(source, SELECTORS["naver"])
 
-            # 제목 추출
-            try:
-                title_element = wait.until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, selectors["title"])
-                    )
-                )
-                title = title_element.text.strip()
-            except Exception:
-                # 대체 방법 시도
+            # 제목 추출 (여러 셀렉터 시도)
+            title = None
+            title_selectors = [
+                selectors["title"],  # 기본 셀렉터
+                "h2.media_end_head_headline",
+                "h3.tit_view",
+                ".article_header h2",
+                ".article_view h3",
+                "h1", "h2"
+            ]
+            
+            print(f"[DEBUG] 제목 추출 시도 (URL: {url[:60]}...)")
+            for i, title_selector in enumerate(title_selectors, 1):
                 try:
-                    title = self.driver.find_element(By.TAG_NAME, "h1").text.strip()
-                except Exception as e:
-                    safe_log("제목 추출 실패", level="warning", error=str(e))
-                    title = "제목 추출 실패"
+                    title_element = WebDriverWait(self.driver, 2).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, title_selector))
+                    )
+                    if title_element and title_element.text.strip():
+                        title = title_element.text.strip()
+                        print(f"[DEBUG] ✓ 제목 추출 성공! (셀렉터 {i}: {title_selector})")
+                        break
+                except Exception:
+                    continue
+            
+            if not title:
+                safe_log("제목 추출 실패 - 모든 셀렉터 실패", level="warning", url=url)
+                title = "제목 추출 실패"
 
-            # 본문 추출
-            try:
-                content_elements = self.driver.find_elements(
-                    By.CSS_SELECTOR,
-                    selectors["content"]
-                )
-                if content_elements:
-                    content = " ".join([elem.text.strip() for elem in content_elements])
-                else:
-                    # 대체 방법
-                    content = self.driver.find_element(By.TAG_NAME, "article").text.strip()
-            except Exception as e:
-                safe_log("본문 추출 실패", level="warning", error=str(e))
+            # 본문 추출 (여러 셀렉터 시도)
+            content = None
+            content_selectors = [
+                selectors["content"],  # #dic_area
+                "#articeBody",
+                ".article_body",
+                ".article_view",
+                "article",
+                ".news_end_body_container",
+                "#newsct_article",
+                "div#articleBodyContents"
+            ]
+            
+            print(f"[DEBUG] 본문 추출 시도 (총 {len(content_selectors)}개 셀렉터)")
+            for i, content_selector in enumerate(content_selectors, 1):
+                try:
+                    content_elements = self.driver.find_elements(By.CSS_SELECTOR, content_selector)
+                    if content_elements:
+                        content_text = " ".join([elem.text.strip() for elem in content_elements if elem.text.strip()])
+                        if content_text and len(content_text) > 50:  # 최소 50자 이상
+                            content = content_text
+                            print(f"[DEBUG] ✓ 본문 추출 성공! (셀렉터 {i}: {content_selector}, 길이: {len(content)}자)")
+                            break
+                        else:
+                            print(f"[DEBUG] 셀렉터 {i} ({content_selector}): 내용 부족 ({len(content_text) if content_text else 0}자)")
+                    else:
+                        print(f"[DEBUG] 셀렉터 {i} ({content_selector}): 요소 없음")
+                except Exception as e:
+                    print(f"[DEBUG] 셀렉터 {i} ({content_selector}): 에러 - {str(e)[:50]}")
+                    continue
+            
+            if not content:
+                safe_log("본문 추출 실패 - 모든 셀렉터 실패", level="error")
+                # 디버깅: 페이지 소스 일부 출력
+                page_source = self.driver.page_source[:2000]
+                print(f"[DEBUG] 페이지 소스 미리보기:\n{page_source}\n...")
                 content = "본문 추출 실패"
 
             # 댓글 추출 (네이버만 지원)

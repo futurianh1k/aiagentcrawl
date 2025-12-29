@@ -213,11 +213,22 @@ class NewsAnalysisAgent:
 
             for article in articles_data:
                 if "error" in article:
+                    safe_log("기사 스킵 (에러 포함)", level="warning", error=article.get("error"))
                     continue
 
                 # 기사 본문 감성 분석
                 article_text = f"{article.get('title', '')} {article.get('content', '')}"
-                article_sentiment = analyze_sentiment(article_text[:500])  # 최대 500자
+                
+                try:
+                    article_sentiment = analyze_sentiment(article_text[:500])  # 최대 500자
+                except Exception as e:
+                    safe_log("기사 감성 분석 실패", level="error", error=str(e))
+                    article_sentiment = {
+                        "sentiment": "중립",
+                        "sentiment_score": 0.0,
+                        "sentiment_label": "neutral",
+                        "confidence": 0.0
+                    }
 
                 # 댓글 감성 분석
                 article_comments = article.get("comments", [])
@@ -226,14 +237,18 @@ class NewsAnalysisAgent:
                 for comment in article_comments[:10]:  # 최대 10개 댓글
                     comment_text = comment.get("text", "") if isinstance(comment, dict) else str(comment)
                     if comment_text:
-                        comment_sentiment = analyze_sentiment(comment_text)
-                        # 댓글 데이터와 감성 분석 결과 병합
-                        comment_data = comment if isinstance(comment, dict) else {"text": comment}
-                        analyzed_comments.append({
-                            **comment_data,
-                            **comment_sentiment
-                        })
-                        all_comments.append(comment_text)
+                        try:
+                            comment_sentiment = analyze_sentiment(comment_text)
+                            # 댓글 데이터와 감성 분석 결과 병합
+                            comment_data = comment if isinstance(comment, dict) else {"text": comment}
+                            analyzed_comments.append({
+                                **comment_data,
+                                **comment_sentiment
+                            })
+                            all_comments.append(comment_text)
+                        except Exception as e:
+                            safe_log("댓글 감성 분석 실패", level="warning", error=str(e))
+                            continue
 
                 analyzed_articles.append({
                     **article,
