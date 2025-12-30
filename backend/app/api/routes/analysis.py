@@ -79,6 +79,7 @@ async def export_session_csv(
     db: Session = Depends(get_database_session)
 ):
     """세션 데이터를 CSV로 내보내기"""
+    from urllib.parse import quote
     
     # 세션 조회
     session = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
@@ -117,11 +118,15 @@ async def export_session_csv(
     bom = '\ufeff'
     csv_content = bom + output.getvalue()
     
+    # 파일명 인코딩 (한글 지원)
+    filename = f"analysis_{session_id}.csv"
+    filename_encoded = quote(f"분석결과_{session_id}_{session.keyword}.csv")
+    
     return StreamingResponse(
         io.BytesIO(csv_content.encode('utf-8')),
         media_type="text/csv",
         headers={
-            "Content-Disposition": f"attachment; filename=analysis_{session_id}_{session.keyword}.csv"
+            "Content-Disposition": f"attachment; filename={filename}; filename*=UTF-8''{filename_encoded}"
         }
     )
 
@@ -207,11 +212,16 @@ async def export_session_json(
     
     json_content = json.dumps(export_data, ensure_ascii=False, indent=2)
     
+    # 파일명 인코딩 (한글 지원)
+    from urllib.parse import quote
+    filename = f"analysis_{session_id}.json"
+    filename_encoded = quote(f"분석결과_{session_id}_{session.keyword}.json")
+    
     return StreamingResponse(
         io.BytesIO(json_content.encode('utf-8')),
         media_type="application/json",
         headers={
-            "Content-Disposition": f"attachment; filename=analysis_{session_id}_{session.keyword}.json"
+            "Content-Disposition": f"attachment; filename={filename}; filename*=UTF-8''{filename_encoded}"
         }
     )
 
