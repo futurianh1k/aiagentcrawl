@@ -7,6 +7,7 @@ interface Article {
   id: number;
   title: string;
   content: string;
+  summary?: string;
   url?: string;
   source?: string;
   sentiment_label?: string;
@@ -176,6 +177,19 @@ export default function ArticleList({ articles }: ArticleListProps) {
             <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
               {article.title}
             </h3>
+
+            {/* AI 요약 */}
+            {article.summary && (
+              <div className="bg-blue-50 border-l-4 border-blue-400 p-3 mb-3 rounded-r">
+                <p className="text-sm text-blue-800 font-medium mb-1 flex items-center">
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  AI 요약
+                </p>
+                <p className="text-sm text-blue-700">{article.summary}</p>
+              </div>
+            )}
 
             <p className="text-gray-600 text-sm mb-3 line-clamp-3">
               {article.content}

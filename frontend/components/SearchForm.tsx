@@ -1,17 +1,73 @@
 "use client";
 
-import { useState } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Search, Loader2, History, Clock, X, Trash2 } from 'lucide-react';
 
 interface SearchFormProps {
   onAnalyze: (keyword: string, sources: string[], maxArticles: number) => void;
   isLoading: boolean;
 }
 
+interface SearchHistoryItem {
+  id: number;
+  keyword: string;
+  sources: string[];
+  max_articles: number;
+  search_count: number;
+  last_searched_at: string;
+}
+
 export default function SearchForm({ onAnalyze, isLoading }: SearchFormProps) {
   const [keyword, setKeyword] = useState('');
   const [sources, setSources] = useState<string[]>(['네이버']);
   const [maxArticles, setMaxArticles] = useState(10);
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // 검색 히스토리 불러오기
+  const fetchSearchHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analysis/search-history?limit=10`);
+      if (response.ok) {
+        const data = await response.json();
+        setSearchHistory(data.history);
+      }
+    } catch (error) {
+      console.error('Failed to fetch search history:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // 히스토리 항목 삭제
+  const deleteHistoryItem = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analysis/search-history/${id}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        setSearchHistory(prev => prev.filter(h => h.id !== id));
+      }
+    } catch (error) {
+      console.error('Failed to delete history:', error);
+    }
+  };
+
+  // 히스토리 항목 클릭 시 검색 폼에 적용
+  const applyHistoryItem = (item: SearchHistoryItem) => {
+    setKeyword(item.keyword);
+    setSources(item.sources);
+    setMaxArticles(item.max_articles);
+    setShowHistory(false);
+  };
+
+  // 컴포넌트 마운트 시 히스토리 로드
+  useEffect(() => {
+    fetchSearchHistory();
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +98,7 @@ export default function SearchForm({ onAnalyze, isLoading }: SearchFormProps) {
     <div className="card p-8 max-w-2xl mx-auto">
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Keyword Input */}
-        <div>
+        <div className="relative">
           <label htmlFor="keyword" className="block text-sm font-medium text-gray-700 mb-2">
             검색 키워드
           </label>
@@ -53,13 +109,68 @@ export default function SearchForm({ onAnalyze, isLoading }: SearchFormProps) {
               id="keyword"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
-              placeholder="예: 인공지능, 경제, 정치 등"
-              className="input pl-10 w-full"
+              onFocus={() => searchHistory.length > 0 && setShowHistory(true)}
+              placeholder="예: 삼성전자 || LG전자 (OR 검색)"
+              className="input pl-10 pr-10 w-full"
               disabled={isLoading}
             />
+            {searchHistory.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowHistory(!showHistory)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-blue-500"
+              >
+                <History className="w-5 h-5" />
+              </button>
+            )}
           </div>
+          
+          {/* 검색 히스토리 드롭다운 */}
+          {showHistory && searchHistory.length > 0 && (
+            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+              <div className="p-2 border-b border-gray-100 flex justify-between items-center">
+                <span className="text-xs font-medium text-gray-500 flex items-center">
+                  <Clock className="w-3 h-3 mr-1" />
+                  최근 검색어
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowHistory(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {searchHistory.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => applyHistoryItem(item)}
+                  className="px-3 py-2 hover:bg-blue-50 cursor-pointer flex justify-between items-center group"
+                >
+                  <div className="flex-1">
+                    <span className="text-sm font-medium text-gray-900">{item.keyword}</span>
+                    <div className="flex items-center text-xs text-gray-500 mt-0.5">
+                      <span>{item.sources.join(', ')}</span>
+                      <span className="mx-1">•</span>
+                      <span>{item.max_articles}개</span>
+                      <span className="mx-1">•</span>
+                      <span>검색 {item.search_count}회</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => deleteHistoryItem(item.id, e)}
+                    className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 p-1"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          
           <p className="text-sm text-gray-500 mt-1">
-            분석하고자 하는 뉴스 주제의 키워드를 입력하세요
+            💡 <strong>OR 검색:</strong> "삼성전자 || LG전자" 또는 "삼성전자 OR LG전자" 형식 지원
           </p>
         </div>
 

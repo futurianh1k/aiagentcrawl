@@ -7,6 +7,7 @@ News Analysis Agent
 
 import json
 import asyncio
+import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -34,6 +35,13 @@ from common.config import get_config
 from common.utils import safe_log, validate_input
 from agent.tools import scrape_news, analyze_sentiment, analyze_sentiment_func, analyze_news_trend, analyze_news_trend_func
 from agent.tools.news_scraper import NewsScraperTool
+
+# OpenAI 요약 기능을 위한 import
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 # Playwright 스크래퍼 (병렬처리 지원)
 try:
@@ -112,6 +120,32 @@ class NewsAnalysisAgent:
         else:
             safe_log("LangChain이 설치되지 않음 (analyze_news_async만 사용 가능)", level="warning")
 
+    def _parse_keyword_operators(self, keyword: str) -> Dict[str, Any]:
+        """
+        키워드에서 검색 연산자 파싱 (OR, AND)
+        
+        지원하는 형식:
+        - "삼성전자 || LG전자" → OR 검색
+        - "삼성전자 OR LG전자" → OR 검색
+        - "삼성전자 LG전자" → AND 검색 (공백으로 구분)
+        
+        Returns:
+            {"type": "or" | "and" | "single", "keywords": ["키워드1", "키워드2", ...]}
+        """
+        import re
+        
+        # 앞뒤 공백 제거
+        keyword = keyword.strip()
+        
+        # OR 검색 체크 (|| 또는 OR)
+        or_pattern = r'\s*(?:\|\||OR)\s*'
+        if re.search(or_pattern, keyword, re.IGNORECASE):
+            keywords = [k.strip() for k in re.split(or_pattern, keyword, flags=re.IGNORECASE) if k.strip()]
+            return {"type": "or", "keywords": keywords}
+        
+        # 단일 키워드 (공백 포함 가능 - AND 검색)
+        return {"type": "single", "keywords": [keyword]}
+
     async def analyze_news_async(
         self,
         keyword: str,
@@ -122,7 +156,7 @@ class NewsAnalysisAgent:
         비동기 뉴스 분석 실행
 
         Args:
-            keyword: 검색할 키워드
+            keyword: 검색할 키워드 (OR 연산자 지원: "삼성전자 || LG전자")
             sources: 뉴스 소스 목록 (["네이버", "구글"])
             max_articles: 최대 기사 수
 
@@ -133,13 +167,33 @@ class NewsAnalysisAgent:
             sources = ["네이버"]
 
         # 입력 검증
-        if not validate_input(keyword, max_length=100):
+        if not validate_input(keyword, max_length=200):
             raise ValueError("유효하지 않은 키워드입니다.")
+        
+        # OR 검색 파싱
+        parsed = self._parse_keyword_operators(keyword)
+        
+        if parsed["type"] == "or" and len(parsed["keywords"]) > 1:
+            # OR 검색: 각 키워드별로 분석 후 병합
+            safe_log("OR 검색 감지", level="info", keywords=parsed["keywords"])
+            return await self._analyze_multiple_keywords_or(
+                parsed["keywords"], sources, max_articles
+            )
 
         safe_log("뉴스 분석 시작", level="info", keyword=keyword, sources=sources)
 
+        # 성능 측정을 위한 시간 기록
+        timing_info = {
+            "crawling_time": 0.0,
+            "sentiment_time": 0.0,
+            "summary_time": 0.0,
+            "total_time": 0.0
+        }
+        total_start_time = time.time()
+
         try:
             # 1단계: 뉴스 수집 (Playwright 병렬처리 또는 Selenium 폴백)
+            crawling_start = time.time()
             articles_data = []
             
             # 소스 필터링 및 매핑
@@ -222,7 +276,6 @@ class NewsAnalysisAgent:
                         }
                     
                     # 순차 추출
-                    import time
                     for url in article_urls:
                         source = "naver" if "naver.com" in url else "google"
                         try:
@@ -251,7 +304,12 @@ class NewsAnalysisAgent:
                     "sources": sources
                 }
 
+            # 크롤링 시간 기록
+            timing_info["crawling_time"] = round(time.time() - crawling_start, 2)
+            safe_log(f"크롤링 완료: {timing_info['crawling_time']}초", level="info")
+
             # 2단계: 각 기사 및 댓글 감성 분석
+            sentiment_start = time.time()
             analyzed_articles = []
             all_comments = []
 
@@ -299,9 +357,23 @@ class NewsAnalysisAgent:
                 analyzed_articles.append({
                     **article,
                     **article_sentiment,
+                    "summary": "",  # 요약은 별도 단계에서 처리
                     "comments": analyzed_comments,
                     "comment_count": len(analyzed_comments)
                 })
+
+            # 감성 분석 시간 기록
+            timing_info["sentiment_time"] = round(time.time() - sentiment_start, 2)
+            safe_log(f"감성 분석 완료: {timing_info['sentiment_time']}초", level="info")
+
+            # 기사 요약 생성 (별도 단계로 분리)
+            summary_start = time.time()
+            for i, analyzed_article in enumerate(analyzed_articles):
+                article_summary = self._summarize_article(
+                    analyzed_article.get('title', ''),
+                    analyzed_article.get('content', '')
+                )
+                analyzed_articles[i]["summary"] = article_summary
 
             # 3단계: 전체 동향 분석
             if all_comments:
@@ -326,6 +398,20 @@ class NewsAnalysisAgent:
             # 5단계: 키워드 추출
             keywords = self._extract_keywords(analyzed_articles, keyword)
 
+            # 6단계: 전체 종합 요약 생성
+            overall_summary = self._generate_overall_summary(
+                analyzed_articles, 
+                keyword, 
+                sentiment_distribution
+            )
+
+            # 요약 시간 기록 (기사 요약 + 종합 요약)
+            timing_info["summary_time"] = round(time.time() - summary_start, 2)
+            safe_log(f"요약 생성 완료: {timing_info['summary_time']}초", level="info")
+
+            # 총 소요 시간
+            timing_info["total_time"] = round(time.time() - total_start_time, 2)
+
             result = {
                 "keyword": keyword,
                 "sources": sources,
@@ -334,10 +420,12 @@ class NewsAnalysisAgent:
                 "sentiment_distribution": sentiment_distribution,
                 "trend_analysis": trend_result,
                 "keywords": keywords,
+                "overall_summary": overall_summary,
+                "timing": timing_info,  # 성능 측정 정보 추가
                 "analyzed_at": datetime.now().isoformat()
             }
 
-            safe_log("뉴스 분석 완료", level="info", total_articles=len(analyzed_articles))
+            safe_log(f"뉴스 분석 완료 (총 {timing_info['total_time']}초)", level="info", total_articles=len(analyzed_articles))
             return result
 
         except Exception as e:
@@ -414,6 +502,234 @@ class NewsAnalysisAgent:
 
         return distribution
 
+    async def _analyze_multiple_keywords_or(
+        self,
+        keywords: List[str],
+        sources: List[str],
+        max_articles: int
+    ) -> Dict[str, Any]:
+        """
+        OR 검색: 여러 키워드를 각각 분석 후 결과 병합
+        
+        Args:
+            keywords: 검색 키워드 목록
+            sources: 뉴스 소스 목록
+            max_articles: 키워드당 최대 기사 수
+        
+        Returns:
+            병합된 분석 결과
+        """
+        total_start_time = time.time()
+        timing_info = {
+            "crawling_time": 0.0,
+            "sentiment_time": 0.0,
+            "summary_time": 0.0,
+            "total_time": 0.0
+        }
+        
+        all_articles = []
+        all_keywords_data = []
+        combined_sentiment = {"positive": 0, "negative": 0, "neutral": 0}
+        keyword_results = []
+        
+        # 각 키워드별로 분석 실행
+        articles_per_keyword = max(3, max_articles // len(keywords))  # 키워드당 기사 수 분배
+        
+        for kw in keywords:
+            safe_log(f"OR 검색 - '{kw}' 분석 시작", level="info")
+            
+            try:
+                # 단일 키워드 분석 (재귀 호출 방지를 위해 직접 분석 로직 사용)
+                result = await self._analyze_single_keyword(
+                    kw, sources, articles_per_keyword
+                )
+                
+                if "error" not in result:
+                    keyword_results.append({
+                        "keyword": kw,
+                        "article_count": result.get("total_articles", 0),
+                        "sentiment": result.get("sentiment_distribution", {})
+                    })
+                    
+                    # 기사 병합
+                    for article in result.get("articles", []):
+                        article["search_keyword"] = kw  # 어떤 키워드로 찾았는지 표시
+                        all_articles.append(article)
+                    
+                    # 감정 분포 합산
+                    for key in combined_sentiment:
+                        combined_sentiment[key] += result.get("sentiment_distribution", {}).get(key, 0)
+                    
+                    # 타이밍 정보 합산
+                    result_timing = result.get("timing", {})
+                    timing_info["crawling_time"] += result_timing.get("crawling_time", 0)
+                    timing_info["sentiment_time"] += result_timing.get("sentiment_time", 0)
+                    timing_info["summary_time"] += result_timing.get("summary_time", 0)
+                    
+                    # 키워드 데이터 병합
+                    all_keywords_data.extend(result.get("keywords", []))
+                    
+            except Exception as e:
+                safe_log(f"OR 검색 - '{kw}' 분석 실패", level="warning", error=str(e))
+                continue
+        
+        if not all_articles:
+            return {
+                "error": f"'{' || '.join(keywords)}' 키워드로 기사를 찾을 수 없습니다.",
+                "keyword": " || ".join(keywords),
+                "sources": sources
+            }
+        
+        # 전체 종합 요약 생성
+        summary_start = time.time()
+        overall_summary = self._generate_overall_summary(
+            all_articles,
+            " || ".join(keywords),
+            combined_sentiment
+        )
+        timing_info["summary_time"] += round(time.time() - summary_start, 2)
+        
+        timing_info["total_time"] = round(time.time() - total_start_time, 2)
+        
+        # 결과 조합
+        return {
+            "keyword": " || ".join(keywords),
+            "search_type": "or",
+            "keyword_results": keyword_results,
+            "sources": sources,
+            "total_articles": len(all_articles),
+            "articles": all_articles,
+            "sentiment_distribution": combined_sentiment,
+            "keywords": all_keywords_data[:20],  # 상위 20개
+            "overall_summary": overall_summary,
+            "timing": timing_info,
+            "analyzed_at": datetime.now().isoformat()
+        }
+
+    async def _analyze_single_keyword(
+        self,
+        keyword: str,
+        sources: List[str],
+        max_articles: int
+    ) -> Dict[str, Any]:
+        """단일 키워드 분석 (내부 사용)"""
+        # 기존 analyze_news_async 로직의 핵심 부분을 분리
+        timing_info = {
+            "crawling_time": 0.0,
+            "sentiment_time": 0.0,
+            "summary_time": 0.0,
+            "total_time": 0.0
+        }
+        total_start_time = time.time()
+        
+        try:
+            # 1단계: 뉴스 수집
+            crawling_start = time.time()
+            articles_data = []
+            
+            source_mapping = {
+                "네이버": "네이버", "naver": "네이버",
+                "구글": "구글", "google": "구글",
+            }
+            
+            valid_sources = []
+            for source in sources:
+                normalized_source = source_mapping.get(source)
+                if normalized_source and normalized_source not in valid_sources:
+                    valid_sources.append(normalized_source)
+            
+            if not valid_sources:
+                valid_sources = ["네이버"]
+            
+            if PLAYWRIGHT_AVAILABLE:
+                playwright_scraper = PlaywrightNewsScraper()
+                try:
+                    articles_data = await asyncio.wait_for(
+                        playwright_scraper.scrape_all(keyword, valid_sources, max_articles),
+                        timeout=120
+                    )
+                    for article in articles_data:
+                        article["keyword"] = keyword
+                except asyncio.TimeoutError:
+                    return {"error": f"'{keyword}' 검색 시간 초과"}
+                finally:
+                    await playwright_scraper.cleanup()
+            else:
+                scraper = NewsScraperTool()
+                try:
+                    article_urls = await asyncio.wait_for(
+                        asyncio.to_thread(scraper.search_news, keyword, valid_sources, max_articles),
+                        timeout=120
+                    )
+                    for url in (article_urls or []):
+                        source = "naver" if "naver.com" in url else "google"
+                        try:
+                            article = scraper.scrape_article(url, source)
+                            article_dict = article.to_dict()
+                            article_dict["keyword"] = keyword
+                            articles_data.append(article_dict)
+                        except:
+                            pass
+                        time.sleep(0.5)
+                finally:
+                    scraper.cleanup()
+            
+            timing_info["crawling_time"] = round(time.time() - crawling_start, 2)
+            
+            if not articles_data:
+                return {"error": f"'{keyword}' 기사 없음", "keyword": keyword}
+            
+            # 2단계: 감성 분석
+            sentiment_start = time.time()
+            analyzed_articles = []
+            
+            for article in articles_data:
+                if "error" in article:
+                    continue
+                    
+                article_text = f"{article.get('title', '')} {article.get('content', '')}"
+                try:
+                    article_sentiment = analyze_sentiment_func(article_text[:500])
+                except:
+                    article_sentiment = {"sentiment": "중립", "sentiment_score": 0.0, "sentiment_label": "neutral", "confidence": 0.0}
+                
+                analyzed_articles.append({
+                    **article,
+                    **article_sentiment,
+                    "summary": "",
+                    "comments": [],
+                    "comment_count": 0
+                })
+            
+            timing_info["sentiment_time"] = round(time.time() - sentiment_start, 2)
+            
+            # 3단계: 요약 생성
+            summary_start = time.time()
+            for i, analyzed_article in enumerate(analyzed_articles):
+                article_summary = self._summarize_article(
+                    analyzed_article.get('title', ''),
+                    analyzed_article.get('content', '')
+                )
+                analyzed_articles[i]["summary"] = article_summary
+            
+            sentiment_distribution = self._calculate_sentiment_distribution(analyzed_articles)
+            keywords_data = self._extract_keywords(analyzed_articles, keyword)
+            
+            timing_info["summary_time"] = round(time.time() - summary_start, 2)
+            timing_info["total_time"] = round(time.time() - total_start_time, 2)
+            
+            return {
+                "keyword": keyword,
+                "total_articles": len(analyzed_articles),
+                "articles": analyzed_articles,
+                "sentiment_distribution": sentiment_distribution,
+                "keywords": keywords_data,
+                "timing": timing_info
+            }
+            
+        except Exception as e:
+            return {"error": str(e), "keyword": keyword}
+
     def _extract_keywords(self, articles: List[Dict], main_keyword: str) -> List[Dict]:
         """키워드 추출 및 빈도 계산"""
         keyword_freq = {}
@@ -436,6 +752,105 @@ class NewsAnalysisAgent:
             }
             for keyword, freq in sorted_keywords
         ]
+
+    def _summarize_article(self, title: str, content: str) -> str:
+        """OpenAI를 사용하여 기사 내용 요약"""
+        if not OPENAI_AVAILABLE or not self.openai_api_key:
+            return ""
+        
+        try:
+            client = OpenAI(api_key=self.openai_api_key)
+            
+            # 내용이 너무 길면 잘라내기
+            text = f"제목: {title}\n\n내용: {content[:3000]}"
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "당신은 뉴스 기사 요약 전문가입니다. 주어진 뉴스 기사를 3-4문장으로 핵심 내용만 간결하게 요약해주세요. 한국어로 답변하세요."
+                    },
+                    {
+                        "role": "user",
+                        "content": text
+                    }
+                ],
+                max_tokens=300,
+                temperature=0.3
+            )
+            
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            safe_log("기사 요약 실패", level="warning", error=str(e))
+            return ""
+
+    def _generate_overall_summary(self, articles: List[Dict], keyword: str, sentiment_distribution: Dict) -> str:
+        """전체 기사에 대한 종합 요약 생성"""
+        if not OPENAI_AVAILABLE or not self.openai_api_key:
+            return ""
+        
+        try:
+            client = OpenAI(api_key=self.openai_api_key)
+            
+            # 기사 제목과 요약 수집
+            article_summaries = []
+            for i, article in enumerate(articles[:10], 1):  # 최대 10개 기사
+                title = article.get('title', '')
+                summary = article.get('summary', '')
+                sentiment = article.get('sentiment', '중립')
+                if title:
+                    article_summaries.append(f"{i}. [{sentiment}] {title}")
+                    if summary:
+                        article_summaries.append(f"   요약: {summary[:100]}...")
+            
+            articles_text = "\n".join(article_summaries)
+            
+            # 감정 분포 정보
+            total = sum(sentiment_distribution.values())
+            sentiment_info = f"""
+감정 분포:
+- 긍정: {sentiment_distribution.get('positive', 0)}개 ({sentiment_distribution.get('positive', 0)/total*100:.1f}% if total > 0 else 0)
+- 부정: {sentiment_distribution.get('negative', 0)}개 ({sentiment_distribution.get('negative', 0)/total*100:.1f}% if total > 0 else 0)
+- 중립: {sentiment_distribution.get('neutral', 0)}개 ({sentiment_distribution.get('neutral', 0)/total*100:.1f}% if total > 0 else 0)
+"""
+            
+            prompt = f"""'{keyword}' 키워드에 대한 뉴스 분석 결과를 종합 요약해주세요.
+
+수집된 기사 수: {len(articles)}개
+
+{sentiment_info}
+
+주요 기사 목록:
+{articles_text}
+
+위 정보를 바탕으로:
+1. 전반적인 여론 동향 (긍정/부정/중립)
+2. 주요 쟁점 및 이슈
+3. 향후 전망 또는 시사점
+
+을 5-7문장으로 종합 요약해주세요. 한국어로 답변하세요."""
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "당신은 뉴스 분석 전문가입니다. 여러 뉴스 기사를 분석하여 종합적인 인사이트를 제공합니다."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                max_tokens=500,
+                temperature=0.3
+            )
+            
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            safe_log("종합 요약 생성 실패", level="warning", error=str(e))
+            return ""
 
     def get_conversation_history(self) -> List[Dict]:
         """대화 히스토리 반환"""

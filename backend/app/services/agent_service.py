@@ -138,6 +138,7 @@ class NewsAnalysisAgent:
             formatted_article = {
                 "title": article.get("title", ""),
                 "content": article.get("content", ""),
+                "summary": article.get("summary", ""),  # 기사 요약 추가
                 "url": article.get("url"),
                 "source": article.get("source"),
                 "published_at": article.get("published_at"),
@@ -185,10 +186,14 @@ class NewsAnalysisAgent:
         
         return {
             "keyword": agent_result.get("keyword", keyword),
+            "search_type": agent_result.get("search_type", "single"),  # OR 검색 타입
+            "keyword_results": agent_result.get("keyword_results", []),  # OR 검색 시 키워드별 결과
             "sources": agent_result.get("sources", sources),
             "total_articles": len(formatted_articles),
             "articles": formatted_articles,
             "sentiment_distribution": normalized_dist,
             "keywords": keywords,
+            "overall_summary": agent_result.get("overall_summary", ""),  # 종합 요약 추가
+            "timing": agent_result.get("timing", {}),  # 성능 측정 정보 추가
             "analyzed_at": agent_result.get("analyzed_at", datetime.now().isoformat())
         }

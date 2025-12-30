@@ -19,6 +19,13 @@ class SentimentDistribution(BaseModel):
     negative: int = Field(default=0, description="부정 기사 수") 
     neutral: int = Field(default=0, description="중립 기사 수")
 
+class TimingInfo(BaseModel):
+    """성능 측정 정보 스키마"""
+    crawling_time: float = Field(default=0.0, description="크롤링 소요 시간(초)")
+    sentiment_time: float = Field(default=0.0, description="감성 분석 소요 시간(초)")
+    summary_time: float = Field(default=0.0, description="요약 생성 소요 시간(초)")
+    total_time: float = Field(default=0.0, description="총 소요 시간(초)")
+
 class KeywordData(BaseModel):
     """키워드 데이터 스키마"""
     keyword: str = Field(..., description="키워드")
@@ -30,6 +37,7 @@ class ArticleData(BaseModel):
     id: int
     title: str
     content: str
+    summary: Optional[str] = Field(default="", description="AI 요약")
     url: Optional[str]
     source: Optional[str]
     published_at: Optional[datetime]
@@ -47,6 +55,8 @@ class AnalysisResponse(BaseModel):
     sentiment_distribution: SentimentDistribution = Field(..., description="감정 분포")
     keywords: List[KeywordData] = Field(default=[], description="키워드 목록")
     articles: List[ArticleData] = Field(default=[], description="기사 목록")
+    overall_summary: Optional[str] = Field(default="", description="종합 요약")
+    timing: Optional[TimingInfo] = Field(default=None, description="성능 측정 정보")
     created_at: datetime = Field(..., description="생성 시간")
     completed_at: Optional[datetime] = Field(default=None, description="완료 시간")
 

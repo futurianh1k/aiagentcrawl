@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Search, Trash2, Eye, Calendar, FileText, MessageSquare, AlertCircle, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { Loader2, Search, Trash2, Eye, Calendar, FileText, MessageSquare, AlertCircle, CheckCircle, Clock, XCircle, Download, FileSpreadsheet, FileJson } from 'lucide-react';
 
 interface Session {
   id: number;
   keyword: string;
   status: string;
   article_count: number;
+  overall_summary?: string;
   created_at: string;
   completed_at?: string;
 }
@@ -30,6 +31,8 @@ export default function SessionsPage() {
   const [perPage] = useState(10);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [exportingId, setExportingId] = useState<number | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState<number | null>(null);
 
   const fetchSessions = async (pageNum: number = 1, keyword: string = '') => {
     setLoading(true);
@@ -93,6 +96,45 @@ export default function SessionsPage() {
   const handleSearch = () => {
     setPage(1);
     fetchSessions(1, searchKeyword);
+  };
+
+  const handleExport = async (sessionId: number, format: 'csv' | 'json') => {
+    setExportingId(sessionId);
+    setShowExportMenu(null);
+    
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analysis/export/${sessionId}/${format}`
+      );
+      
+      if (!response.ok) {
+        throw new Error('내보내기 실패');
+      }
+      
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `analysis_${sessionId}.${format}`;
+      
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename=(.+)/);
+        if (match) filename = match[1];
+      }
+      
+      // 파일 다운로드
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '내보내기 중 오류가 발생했습니다.');
+    } finally {
+      setExportingId(null);
+    }
   };
 
   useEffect(() => {
@@ -221,11 +263,11 @@ export default function SessionsPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         기사 수
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        생성일시
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[300px]">
+                        요약
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        완료일시
+                        생성일시
                       </th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                         작업
@@ -235,7 +277,7 @@ export default function SessionsPage() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {sessions.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                        <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
                           분석 세션이 없습니다.
                         </td>
                       </tr>
@@ -262,24 +304,23 @@ export default function SessionsPage() {
                               {session.article_count}개
                             </div>
                           </td>
+                          <td className="px-6 py-4 text-sm text-gray-500 max-w-[300px]">
+                            {session.overall_summary ? (
+                              <p className="line-clamp-2 text-gray-600" title={session.overall_summary}>
+                                {session.overall_summary}
+                              </p>
+                            ) : (
+                              <span className="text-gray-400 italic">요약 없음</span>
+                            )}
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             <div className="flex items-center">
                               <Calendar className="w-4 h-4 mr-1" />
                               {formatDate(session.created_at)}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {session.completed_at ? (
-                              <div className="flex items-center">
-                                <Calendar className="w-4 h-4 mr-1" />
-                                {formatDate(session.completed_at)}
-                              </div>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1">
                               <button
                                 onClick={() => router.push(`/analyze?session_id=${session.id}`)}
                                 className="text-blue-600 hover:text-blue-900 p-2 hover:bg-blue-50 rounded"
@@ -287,6 +328,42 @@ export default function SessionsPage() {
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
+                              
+                              {/* 내보내기 드롭다운 */}
+                              <div className="relative">
+                                <button
+                                  onClick={() => setShowExportMenu(showExportMenu === session.id ? null : session.id)}
+                                  disabled={exportingId === session.id}
+                                  className="text-green-600 hover:text-green-900 p-2 hover:bg-green-50 rounded disabled:opacity-50"
+                                  title="내보내기"
+                                >
+                                  {exportingId === session.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Download className="w-4 h-4" />
+                                  )}
+                                </button>
+                                
+                                {showExportMenu === session.id && (
+                                  <div className="absolute right-0 mt-1 w-36 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                                    <button
+                                      onClick={() => handleExport(session.id, 'csv')}
+                                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                                    >
+                                      <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />
+                                      CSV (엑셀)
+                                    </button>
+                                    <button
+                                      onClick={() => handleExport(session.id, 'json')}
+                                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                                    >
+                                      <FileJson className="w-4 h-4 mr-2 text-blue-600" />
+                                      JSON
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                              
                               <button
                                 onClick={() => handleDelete(session.id)}
                                 disabled={deletingId === session.id}

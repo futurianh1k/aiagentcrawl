@@ -16,6 +16,7 @@ class AnalysisSession(Base):
     keyword = Column(String(255), nullable=False, index=True)
     sources = Column(Text)  # JSON 문자열로 저장
     status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    overall_summary = Column(Text)  # 세션 전체 요약본
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True))
 
@@ -30,6 +31,7 @@ class Article(Base):
     session_id = Column(Integer, ForeignKey("analysis_sessions.id"), nullable=False)
     title = Column(String(500), nullable=False)
     content = Column(Text, nullable=False)
+    summary = Column(Text)  # AI 요약본
     url = Column(String(1000))
     source = Column(String(100))
     published_at = Column(DateTime(timezone=True))
@@ -67,4 +69,17 @@ class Keyword(Base):
     keyword = Column(String(100), nullable=False)
     frequency = Column(Integer, default=1)
     sentiment_score = Column(Float)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SearchHistory(Base):
+    """검색 히스토리 모델"""
+    __tablename__ = "search_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    keyword = Column(String(255), nullable=False, index=True)
+    sources = Column(Text)  # JSON 문자열로 저장
+    max_articles = Column(Integer, default=10)
+    search_count = Column(Integer, default=1)  # 동일 검색어 횟수
+    last_searched_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())

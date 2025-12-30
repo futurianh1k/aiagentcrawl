@@ -3,15 +3,218 @@
 저장된 분석 결과 조회 엔드포인트
 """
 
+import csv
+import io
+import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func  # SQLAlchemy func 추가
 from app.api.dependencies import get_database_session
 from app.schemas.requests import AnalysisResponse, SessionListResponse
-from app.models.database import AnalysisSession, Article, Comment, Keyword
+from app.models.database import AnalysisSession, Article, Comment, Keyword, SearchHistory
 
 router = APIRouter()
+
+
+@router.get("/search-history")
+async def get_search_history(
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_database_session)
+):
+    """검색 히스토리 조회 (최근 검색어)"""
+    
+    history = db.query(SearchHistory).order_by(
+        SearchHistory.last_searched_at.desc()
+    ).limit(limit).all()
+    
+    return {
+        "history": [
+            {
+                "id": h.id,
+                "keyword": h.keyword,
+                "sources": json.loads(h.sources) if h.sources else [],
+                "max_articles": h.max_articles,
+                "search_count": h.search_count,
+                "last_searched_at": h.last_searched_at
+            }
+            for h in history
+        ]
+    }
+
+
+@router.delete("/search-history/{history_id}")
+async def delete_search_history(
+    history_id: int,
+    db: Session = Depends(get_database_session)
+):
+    """검색 히스토리 삭제"""
+    
+    history = db.query(SearchHistory).filter(SearchHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="히스토리를 찾을 수 없습니다")
+    
+    db.delete(history)
+    db.commit()
+    
+    return {"message": "검색 히스토리가 삭제되었습니다"}
+
+
+@router.delete("/search-history")
+async def clear_search_history(
+    db: Session = Depends(get_database_session)
+):
+    """모든 검색 히스토리 삭제"""
+    
+    db.query(SearchHistory).delete()
+    db.commit()
+    
+    return {"message": "모든 검색 히스토리가 삭제되었습니다"}
+
+
+@router.get("/export/{session_id}/csv")
+async def export_session_csv(
+    session_id: int,
+    db: Session = Depends(get_database_session)
+):
+    """세션 데이터를 CSV로 내보내기"""
+    
+    # 세션 조회
+    session = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="분석 세션을 찾을 수 없습니다")
+    
+    # 기사 조회
+    articles = db.query(Article).filter(Article.session_id == session_id).all()
+    
+    # CSV 생성
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # 헤더
+    writer.writerow([
+        "번호", "제목", "요약", "소스", "URL", "감성", "감성점수", "신뢰도", "작성일"
+    ])
+    
+    # 데이터
+    for i, article in enumerate(articles, 1):
+        writer.writerow([
+            i,
+            article.title,
+            article.summary or "",
+            article.source or "",
+            article.url or "",
+            article.sentiment_label or "",
+            article.sentiment_score or 0,
+            article.confidence or 0,
+            article.published_at.strftime("%Y-%m-%d %H:%M") if article.published_at else ""
+        ])
+    
+    output.seek(0)
+    
+    # UTF-8 BOM 추가 (Excel 한글 호환)
+    bom = '\ufeff'
+    csv_content = bom + output.getvalue()
+    
+    return StreamingResponse(
+        io.BytesIO(csv_content.encode('utf-8')),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=analysis_{session_id}_{session.keyword}.csv"
+        }
+    )
+
+
+@router.get("/export/{session_id}/json")
+async def export_session_json(
+    session_id: int,
+    db: Session = Depends(get_database_session)
+):
+    """세션 데이터를 JSON으로 내보내기"""
+    
+    # 세션 조회
+    session = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="분석 세션을 찾을 수 없습니다")
+    
+    # 기사 조회
+    articles = db.query(Article).filter(Article.session_id == session_id).all()
+    
+    # 키워드 조회
+    keywords = db.query(Keyword).filter(Keyword.session_id == session_id).all()
+    
+    # 감정 분포 계산
+    sentiment_distribution = {"positive": 0, "negative": 0, "neutral": 0}
+    
+    articles_data = []
+    for article in articles:
+        # 댓글 조회
+        comments = db.query(Comment).filter(Comment.article_id == article.id).all()
+        
+        label = article.sentiment_label or "neutral"
+        if label == "긍정":
+            sentiment_distribution["positive"] += 1
+        elif label == "부정":
+            sentiment_distribution["negative"] += 1
+        else:
+            sentiment_distribution["neutral"] += 1
+        
+        articles_data.append({
+            "id": article.id,
+            "title": article.title,
+            "content": article.content,
+            "summary": article.summary or "",
+            "url": article.url,
+            "source": article.source,
+            "sentiment_label": article.sentiment_label,
+            "sentiment_score": article.sentiment_score,
+            "confidence": article.confidence,
+            "published_at": article.published_at.isoformat() if article.published_at else None,
+            "comments": [
+                {
+                    "content": c.content,
+                    "author": c.author,
+                    "sentiment_label": c.sentiment_label,
+                    "sentiment_score": c.sentiment_score
+                }
+                for c in comments
+            ]
+        })
+    
+    export_data = {
+        "session": {
+            "id": session.id,
+            "keyword": session.keyword,
+            "sources": json.loads(session.sources) if session.sources else [],
+            "status": session.status,
+            "overall_summary": session.overall_summary,
+            "created_at": session.created_at.isoformat(),
+            "completed_at": session.completed_at.isoformat() if session.completed_at else None
+        },
+        "sentiment_distribution": sentiment_distribution,
+        "keywords": [
+            {
+                "keyword": k.keyword,
+                "frequency": k.frequency,
+                "sentiment_score": k.sentiment_score
+            }
+            for k in keywords
+        ],
+        "articles": articles_data,
+        "total_articles": len(articles_data)
+    }
+    
+    json_content = json.dumps(export_data, ensure_ascii=False, indent=2)
+    
+    return StreamingResponse(
+        io.BytesIO(json_content.encode('utf-8')),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f"attachment; filename=analysis_{session_id}_{session.keyword}.json"
+        }
+    )
+
 
 @router.get("/sessions", response_model=SessionListResponse)
 async def get_analysis_sessions(
@@ -44,6 +247,7 @@ async def get_analysis_sessions(
             "keyword": session.keyword,
             "status": session.status,
             "article_count": article_count,
+            "overall_summary": session.overall_summary or "",  # 종합 요약 미리보기
             "created_at": session.created_at,
             "completed_at": session.completed_at
         })
@@ -150,6 +354,7 @@ async def get_analysis_result(
             "id": article.id,
             "title": article.title,
             "content": article.content,
+            "summary": article.summary or "",  # 기사 요약
             "url": article.url,
             "source": article.source,
             "published_at": article.published_at,
@@ -216,6 +421,7 @@ async def get_analysis_result(
         sentiment_distribution=sentiment_distribution,
         keywords=keywords_data,
         articles=articles_data,
+        overall_summary=session.overall_summary or "",  # 종합 요약
         created_at=session.created_at,
         completed_at=session.completed_at
     )

@@ -5,7 +5,14 @@ import { useSearchParams } from 'next/navigation';
 import SentimentChart from '@/components/SentimentChart';
 import KeywordCloud from '@/components/KeywordCloud';
 import ArticleList from '@/components/ArticleList';
-import { Loader2, RefreshCw, AlertCircle } from 'lucide-react';
+import { Loader2, RefreshCw, AlertCircle, Download, FileSpreadsheet, FileJson } from 'lucide-react';
+
+interface TimingInfo {
+  crawling_time: number;
+  sentiment_time: number;
+  summary_time: number;
+  total_time: number;
+}
 
 interface AnalysisData {
   session_id: number;
@@ -26,6 +33,7 @@ interface AnalysisData {
     id: number;
     title: string;
     content: string;
+    summary?: string;
     url?: string;
     source?: string;
     sentiment_label?: string;
@@ -33,6 +41,8 @@ interface AnalysisData {
     confidence?: number;
     comment_count: number;
   }>;
+  overall_summary?: string;
+  timing?: TimingInfo;
   created_at: string;
   completed_at?: string;
 }
@@ -44,6 +54,48 @@ export default function AnalyzePage() {
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const handleExport = async (format: 'csv' | 'json') => {
+    if (!sessionId) return;
+    
+    setExporting(true);
+    setShowExportMenu(false);
+    
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analysis/export/${sessionId}/${format}`
+      );
+      
+      if (!response.ok) {
+        throw new Error('내보내기 실패');
+      }
+      
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `analysis_${sessionId}.${format}`;
+      
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename=(.+)/);
+        if (match) filename = match[1];
+      }
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '내보내기 중 오류가 발생했습니다.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const fetchAnalysisResult = async () => {
     if (!sessionId) {
@@ -152,15 +204,97 @@ export default function AnalyzePage() {
                 </span>
               </div>
             </div>
-            <button 
-              onClick={fetchAnalysisResult}
-              className="btn btn-secondary px-4 py-2"
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              새로고침
-            </button>
+            <div className="flex items-center gap-2">
+              {/* 내보내기 드롭다운 */}
+              <div className="relative">
+                <button 
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  disabled={exporting}
+                  className="btn btn-primary px-4 py-2 flex items-center"
+                >
+                  {exporting ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-2" />
+                  )}
+                  내보내기
+                </button>
+                
+                {showExportMenu && (
+                  <div className="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                    <button
+                      onClick={() => handleExport('csv')}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center rounded-t-lg"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />
+                      CSV (엑셀)
+                    </button>
+                    <button
+                      onClick={() => handleExport('json')}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center rounded-b-lg"
+                    >
+                      <FileJson className="w-4 h-4 mr-2 text-blue-600" />
+                      JSON
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+              <button 
+                onClick={fetchAnalysisResult}
+                className="btn btn-secondary px-4 py-2"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                새로고침
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Performance Timing Info */}
+        {analysisData.timing && (
+          <div className="card p-4 mb-6 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200">
+            <h3 className="text-sm font-semibold mb-3 text-gray-700 flex items-center">
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              성능 측정
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                <div className="text-2xl font-bold text-blue-600">{analysisData.timing.crawling_time}s</div>
+                <div className="text-xs text-gray-500 mt-1">🕷️ 크롤링</div>
+              </div>
+              <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                <div className="text-2xl font-bold text-green-600">{analysisData.timing.sentiment_time}s</div>
+                <div className="text-xs text-gray-500 mt-1">💭 감성 분석</div>
+              </div>
+              <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                <div className="text-2xl font-bold text-purple-600">{analysisData.timing.summary_time}s</div>
+                <div className="text-xs text-gray-500 mt-1">📝 요약 생성</div>
+              </div>
+              <div className="text-center p-3 bg-white rounded-lg shadow-sm border-2 border-indigo-200">
+                <div className="text-2xl font-bold text-indigo-600">{analysisData.timing.total_time}s</div>
+                <div className="text-xs text-gray-500 mt-1">⏱️ 총 소요 시간</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Overall Summary */}
+        {analysisData.overall_summary && (
+          <div className="card p-6 mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500">
+            <h2 className="text-xl font-semibold mb-4 text-blue-800 flex items-center">
+              <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              AI 종합 요약
+            </h2>
+            <p className="text-gray-700 leading-relaxed whitespace-pre-line">
+              {analysisData.overall_summary}
+            </p>
+          </div>
+        )}
 
         {/* Charts Grid */}
         <div className="grid lg:grid-cols-2 gap-8 mb-8">

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_agent_service, get_database_session
 from app.schemas.requests import AnalysisRequest, AnalysisResponse
 from app.services.agent_service import NewsAnalysisAgent
-from app.models.database import AnalysisSession, Article, Comment, Keyword
+from app.models.database import AnalysisSession, Article, Comment, Keyword, SearchHistory
 
 router = APIRouter()
 
@@ -23,6 +23,23 @@ async def analyze_news(
 ):
     """뉴스 감정 분석 시작"""
 
+    # 검색 히스토리 저장/업데이트
+    existing_history = db.query(SearchHistory).filter(
+        SearchHistory.keyword == request.keyword
+    ).first()
+    
+    if existing_history:
+        existing_history.search_count += 1
+        existing_history.sources = json.dumps(request.sources)
+        existing_history.max_articles = request.max_articles
+    else:
+        new_history = SearchHistory(
+            keyword=request.keyword,
+            sources=json.dumps(request.sources),
+            max_articles=request.max_articles
+        )
+        db.add(new_history)
+    
     # 분석 세션 생성
     session = AnalysisSession(
         keyword=request.keyword,
@@ -44,11 +61,12 @@ async def analyze_news(
         # 데이터베이스에 결과 저장
         articles_data = []
         for article_data in analysis_result["articles"]:
-            # 기사 저장
+            # 기사 저장 (요약 포함)
             article = Article(
                 session_id=session.id,
                 title=article_data["title"],
                 content=article_data["content"],
+                summary=article_data.get("summary", ""),  # 기사 요약 저장
                 url=article_data.get("url"),
                 source=article_data.get("source"),
                 published_at=article_data.get("published_at"),
@@ -73,11 +91,12 @@ async def analyze_news(
                 db.add(comment)
                 comment_count += 1
 
-            # 기사 데이터에 댓글 수 추가
+            # 기사 데이터에 요약 및 댓글 수 추가
             articles_data.append({
                 "id": article.id,
                 "title": article.title,
                 "content": article.content,
+                "summary": article.summary or "",  # 기사 요약
                 "url": article.url,
                 "source": article.source,
                 "published_at": article.published_at,
@@ -105,9 +124,10 @@ async def analyze_news(
                 "sentiment_score": sentiment_score
             })
 
-        # 세션 상태 업데이트
+        # 세션 상태 및 종합 요약 업데이트
         session.status = "completed"
         session.completed_at = datetime.now()
+        session.overall_summary = analysis_result.get("overall_summary", "")  # 종합 요약 저장
         db.commit()
 
         # 응답 데이터 구성
@@ -119,6 +139,8 @@ async def analyze_news(
             sentiment_distribution=analysis_result["sentiment_distribution"],
             keywords=keywords_data,
             articles=articles_data,
+            overall_summary=session.overall_summary or "",  # 종합 요약
+            timing=analysis_result.get("timing"),  # 성능 측정 정보
             created_at=session.created_at,
             completed_at=session.completed_at
         )
