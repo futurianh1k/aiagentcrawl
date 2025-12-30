@@ -44,6 +44,23 @@ NAVER_SELECTORS = {
         "#articleBody",
         ".news_end_body",
     ],
+    # 이미지 추출용 셀렉터
+    "images": [
+        "#dic_area img",
+        "#newsct_article img",
+        ".news_end_body_container img",
+        ".article_body img",
+        "article img",
+        "#articleBody img",
+    ],
+    # 테이블 추출용 셀렉터
+    "tables": [
+        "#dic_area table",
+        "#newsct_article table",
+        ".news_end_body_container table",
+        ".article_body table",
+        "article table",
+    ],
 }
 
 
@@ -108,13 +125,13 @@ class PlaywrightNaverScraper(PlaywrightBaseScraper):
     
     async def extract_article(self, url: str) -> Optional[Dict[str, Any]]:
         """
-        네이버 뉴스 기사 내용 추출
+        네이버 뉴스 기사 내용 추출 (이미지, 테이블 포함)
         
         Args:
             url: 기사 URL
         
         Returns:
-            기사 정보 딕셔너리
+            기사 정보 딕셔너리 (images, tables 포함)
         """
         if not validate_url(url):
             return None
@@ -137,13 +154,21 @@ class PlaywrightNaverScraper(PlaywrightBaseScraper):
             # 본문 추출
             content = await self.extract_text_by_selectors(page, NAVER_SELECTORS["content"])
             
+            # 이미지 추출
+            images = await self._extract_images(page)
+            
+            # 테이블 추출
+            tables = await self._extract_tables(page)
+            
             if title and content and len(content) > 50:
-                print(f"[DEBUG] ✓ 네이버 기사 추출 성공: {title[:30]}...")
+                print(f"[DEBUG] ✓ 네이버 기사 추출 성공: {title[:30]}... (이미지: {len(images)}개, 테이블: {len(tables)}개)")
                 return {
                     "title": title,
                     "content": content[:3000],  # 최대 3000자
                     "url": url,
                     "source": "네이버",
+                    "images": images,
+                    "tables": tables,
                 }
             
         except Exception as e:
@@ -152,6 +177,156 @@ class PlaywrightNaverScraper(PlaywrightBaseScraper):
             await page.close()
         
         return None
+    
+    async def _extract_images(self, page) -> List[Dict[str, Any]]:
+        """
+        기사 내 이미지 추출
+        
+        Returns:
+            이미지 정보 리스트 [{url, alt, caption, width, height}, ...]
+        """
+        images = []
+        
+        try:
+            for selector in NAVER_SELECTORS["images"]:
+                try:
+                    elements = await page.query_selector_all(selector)
+                    for i, element in enumerate(elements):
+                        if len(images) >= 10:  # 최대 10개 이미지
+                            break
+                        
+                        img_src = await element.get_attribute('src')
+                        if not img_src or not self._is_valid_image_url(img_src):
+                            # data-src 속성 확인 (lazy loading)
+                            img_src = await element.get_attribute('data-src')
+                        
+                        if img_src and self._is_valid_image_url(img_src):
+                            # 상대 경로를 절대 경로로 변환
+                            if img_src.startswith('//'):
+                                img_src = 'https:' + img_src
+                            elif img_src.startswith('/'):
+                                img_src = 'https://n.news.naver.com' + img_src
+                            
+                            alt_text = await element.get_attribute('alt') or ""
+                            
+                            # 이미지 크기 추출
+                            width = await element.get_attribute('width')
+                            height = await element.get_attribute('height')
+                            
+                            # 캡션 추출 (부모 요소에서 찾기)
+                            caption = ""
+                            try:
+                                parent = await element.evaluate_handle("el => el.parentElement")
+                                caption_el = await parent.query_selector("em, span.img_desc, figcaption")
+                                if caption_el:
+                                    caption = await caption_el.inner_text()
+                            except:
+                                pass
+                            
+                            images.append({
+                                "url": img_src,
+                                "alt": alt_text,
+                                "caption": caption,
+                                "width": int(width) if width and width.isdigit() else None,
+                                "height": int(height) if height and height.isdigit() else None,
+                                "order": i,
+                            })
+                    
+                    if images:
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            safe_log("이미지 추출 오류", level="warning", error=str(e))
+        
+        return images
+    
+    async def _extract_tables(self, page) -> List[Dict[str, Any]]:
+        """
+        기사 내 테이블(표) 추출
+        
+        Returns:
+            테이블 정보 리스트 [{html, caption, rows, cols}, ...]
+        """
+        tables = []
+        
+        try:
+            for selector in NAVER_SELECTORS["tables"]:
+                try:
+                    elements = await page.query_selector_all(selector)
+                    for i, element in enumerate(elements):
+                        if len(tables) >= 5:  # 최대 5개 테이블
+                            break
+                        
+                        # 테이블 HTML 추출
+                        table_html = await element.inner_html()
+                        
+                        # 테이블이 너무 작으면 스킵 (최소 2행)
+                        row_count = await element.evaluate("el => el.querySelectorAll('tr').length")
+                        if row_count < 2:
+                            continue
+                        
+                        # 열 개수
+                        col_count = await element.evaluate("""
+                            el => {
+                                const firstRow = el.querySelector('tr');
+                                return firstRow ? firstRow.querySelectorAll('td, th').length : 0;
+                            }
+                        """)
+                        
+                        # 캡션 추출
+                        caption = ""
+                        try:
+                            caption_el = await element.query_selector("caption")
+                            if caption_el:
+                                caption = await caption_el.inner_text()
+                        except:
+                            pass
+                        
+                        tables.append({
+                            "html": table_html[:5000],  # 최대 5000자
+                            "caption": caption,
+                            "rows": row_count,
+                            "cols": col_count,
+                            "order": i,
+                        })
+                    
+                    if tables:
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            safe_log("테이블 추출 오류", level="warning", error=str(e))
+        
+        return tables
+    
+    def _is_valid_image_url(self, url: str) -> bool:
+        """유효한 이미지 URL인지 확인 (아이콘, 배너 등 제외)"""
+        if not url:
+            return False
+        
+        # 제외할 패턴 (광고, 아이콘, 로고 등)
+        exclude_patterns = [
+            "icon", "logo", "banner", "ad_", "advert",
+            "btn_", "button", "sprite", "blank", "spacer",
+            "1x1", "pixel", ".gif",  # 작은 투명 이미지
+            "naver.pstatic.net/static",  # 네이버 정적 리소스
+        ]
+        
+        url_lower = url.lower()
+        for pattern in exclude_patterns:
+            if pattern in url_lower:
+                return False
+        
+        # 이미지 확장자 확인
+        valid_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+        has_valid_ext = any(ext in url_lower for ext in valid_extensions)
+        
+        # imgnews.pstatic.net (네이버 뉴스 이미지 서버)는 확장자 없이도 허용
+        if 'imgnews.pstatic.net' in url_lower or 'image.news.naver.com' in url_lower:
+            return True
+        
+        return has_valid_ext
     
     def _is_valid_naver_url(self, url: str) -> bool:
         """유효한 네이버 뉴스 URL인지 확인"""

@@ -145,7 +145,9 @@ class NewsAnalysisAgent:
                 "sentiment_score": sentiment_score,
                 "sentiment_label": sentiment_label,
                 "confidence": confidence,
-                "comments": []
+                "comments": [],
+                "images": article.get("images", []),  # 이미지 정보 추가
+                "tables": article.get("tables", []),  # 테이블 정보 추가
             }
             
             # 댓글 형식 변환

@@ -1,7 +1,25 @@
 "use client";
 
 import { useState } from 'react';
-import { ExternalLink, MessageSquare, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { ExternalLink, MessageSquare, TrendingUp, TrendingDown, Minus, Image as ImageIcon, Table as TableIcon, ChevronDown, ChevronUp } from 'lucide-react';
+
+interface ArticleMedia {
+  id?: number;
+  url: string;
+  caption?: string;
+  alt_text?: string;
+  width?: number;
+  height?: number;
+}
+
+interface ArticleTable {
+  id?: number;
+  url?: string;
+  caption?: string;
+  table_html?: string;
+  rows?: number;
+  cols?: number;
+}
 
 interface Article {
   id: number;
@@ -14,6 +32,8 @@ interface Article {
   sentiment_score?: number;
   confidence?: number;
   comment_count: number;
+  image_count?: number;
+  table_count?: number;
 }
 
 interface ArticleListProps {
@@ -171,6 +191,18 @@ export default function ArticleList({ articles }: ArticleListProps) {
                   <MessageSquare className="w-4 h-4 mr-1" />
                   {article.comment_count}
                 </div>
+                {(article.image_count ?? 0) > 0 && (
+                  <div className="flex items-center text-blue-600">
+                    <ImageIcon className="w-4 h-4 mr-1" />
+                    {article.image_count}
+                  </div>
+                )}
+                {(article.table_count ?? 0) > 0 && (
+                  <div className="flex items-center text-green-600">
+                    <TableIcon className="w-4 h-4 mr-1" />
+                    {article.table_count}
+                  </div>
+                )}
               </div>
             </div>
 

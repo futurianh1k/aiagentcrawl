@@ -43,6 +43,7 @@ class Article(Base):
     # 관계 설정
     session = relationship("AnalysisSession", back_populates="articles")
     comments = relationship("Comment", back_populates="article")
+    media = relationship("ArticleMedia", back_populates="article")
 
 class Comment(Base):
     """댓글 모델"""
@@ -83,3 +84,37 @@ class SearchHistory(Base):
     search_count = Column(Integer, default=1)  # 동일 검색어 횟수
     last_searched_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ArticleMedia(Base):
+    """기사 미디어 모델 (이미지, 인포그래픽, 테이블)"""
+    __tablename__ = "article_media"
+
+    id = Column(Integer, primary_key=True, index=True)
+    article_id = Column(Integer, ForeignKey("articles.id"), nullable=False, index=True)
+    
+    # 미디어 타입: image, infographic, table
+    media_type = Column(String(20), nullable=False)
+    
+    # 파일 저장 정보
+    file_path = Column(String(500))  # 로컬 파일 경로
+    original_url = Column(String(1000))  # 원본 URL
+    
+    # 메타데이터
+    caption = Column(Text)  # 이미지 캡션 또는 테이블 제목
+    alt_text = Column(String(500))  # 대체 텍스트
+    width = Column(Integer)  # 이미지 너비
+    height = Column(Integer)  # 이미지 높이
+    file_size = Column(Integer)  # 파일 크기 (bytes)
+    mime_type = Column(String(100))  # MIME 타입 (image/jpeg, text/html 등)
+    
+    # 테이블 전용: HTML 내용 저장
+    table_html = Column(Text)  # 테이블의 경우 HTML 직접 저장
+    
+    # 순서 (기사 내 표시 순서)
+    display_order = Column(Integer, default=0)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # 관계 설정
+    article = relationship("Article", back_populates="media")

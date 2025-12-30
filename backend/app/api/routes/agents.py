@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_agent_service, get_database_session
 from app.schemas.requests import AnalysisRequest, AnalysisResponse
 from app.services.agent_service import NewsAnalysisAgent
-from app.models.database import AnalysisSession, Article, Comment, Keyword, SearchHistory
+from app.models.database import AnalysisSession, Article, Comment, Keyword, SearchHistory, ArticleMedia
+from app.services.media_service import media_service
 
 router = APIRouter()
 
@@ -91,6 +92,55 @@ async def analyze_news(
                 db.add(comment)
                 comment_count += 1
 
+            # 미디어 저장 (이미지, 테이블)
+            media_count = {"images": 0, "tables": 0}
+            raw_images = article_data.get("images", [])
+            raw_tables = article_data.get("tables", [])
+            
+            if raw_images or raw_tables:
+                try:
+                    # 미디어 파일 저장 (비동기)
+                    saved_media = await media_service.save_article_media(
+                        article.id, raw_images, raw_tables
+                    )
+                    
+                    # DB에 미디어 메타데이터 저장
+                    for img_data in saved_media.get("images", []):
+                        media_record = ArticleMedia(
+                            article_id=article.id,
+                            media_type="image",
+                            file_path=img_data.get("file_path"),
+                            original_url=img_data.get("original_url"),
+                            caption=img_data.get("caption", ""),
+                            alt_text=img_data.get("alt_text", ""),
+                            width=img_data.get("width"),
+                            height=img_data.get("height"),
+                            file_size=img_data.get("file_size"),
+                            mime_type=img_data.get("mime_type"),
+                            display_order=img_data.get("display_order", 0),
+                        )
+                        db.add(media_record)
+                        media_count["images"] += 1
+                    
+                    for tbl_data in saved_media.get("tables", []):
+                        media_record = ArticleMedia(
+                            article_id=article.id,
+                            media_type="table",
+                            file_path=tbl_data.get("file_path"),
+                            caption=tbl_data.get("caption", ""),
+                            width=tbl_data.get("width"),  # cols
+                            height=tbl_data.get("height"),  # rows
+                            file_size=tbl_data.get("file_size"),
+                            mime_type="text/html",
+                            table_html=tbl_data.get("table_html"),
+                            display_order=tbl_data.get("display_order", 0),
+                        )
+                        db.add(media_record)
+                        media_count["tables"] += 1
+                        
+                except Exception as media_err:
+                    print(f"[WARN] 미디어 저장 오류 (계속 진행): {str(media_err)}")
+
             # 기사 데이터에 요약 및 댓글 수 추가
             articles_data.append({
                 "id": article.id,
@@ -103,7 +153,9 @@ async def analyze_news(
                 "sentiment_score": article.sentiment_score,
                 "sentiment_label": article.sentiment_label,
                 "confidence": article.confidence,
-                "comment_count": comment_count
+                "comment_count": comment_count,
+                "image_count": media_count["images"],
+                "table_count": media_count["tables"],
             })
 
         # 키워드 저장
