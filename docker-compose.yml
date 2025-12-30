@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MySQL 데이터베이스
   mysql:
@@ -15,7 +13,7 @@ services:
       - mysql_data:/var/lib/mysql
       - ./setup_database/04_database_setup.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "3306:3306"
+      - "3307:3306"  # 외부 포트 3307, 내부 포트 3306 (WSL2 포트 충돌 방지)
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword123}"]
       interval: 30s
