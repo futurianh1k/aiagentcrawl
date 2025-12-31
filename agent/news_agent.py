@@ -348,20 +348,32 @@ class NewsAnalysisAgent:
 
                 for comment in article_comments[:10]:  # 최대 10개 댓글
                     comment_text = comment.get("text", "") if isinstance(comment, dict) else str(comment)
+                    
+                    # 댓글 텍스트 전처리 및 유효성 검사
                     if comment_text:
-                        try:
-                            # analyze_sentiment_func 사용 (직접 호출 가능한 함수)
-                            comment_sentiment = analyze_sentiment_func(comment_text)
-                            # 댓글 데이터와 감성 분석 결과 병합
-                            comment_data = comment if isinstance(comment, dict) else {"text": comment}
-                            analyzed_comments.append({
-                                **comment_data,
-                                **comment_sentiment
-                            })
-                            all_comments.append(comment_text)
-                        except Exception as e:
-                            safe_log("댓글 감성 분석 실패", level="warning", error=str(e))
-                            continue
+                        comment_text = comment_text.strip()
+                    
+                    # 빈 댓글이나 너무 짧은 댓글은 skip (로그 없이)
+                    if not comment_text or len(comment_text) < 5:
+                        continue
+                    
+                    # 너무 긴 댓글은 자르기
+                    if len(comment_text) > 1000:
+                        comment_text = comment_text[:1000]
+                    
+                    try:
+                        # analyze_sentiment_func 사용 (직접 호출 가능한 함수)
+                        comment_sentiment = analyze_sentiment_func(comment_text)
+                        # 댓글 데이터와 감성 분석 결과 병합
+                        comment_data = comment if isinstance(comment, dict) else {"text": comment}
+                        analyzed_comments.append({
+                            **comment_data,
+                            **comment_sentiment
+                        })
+                        all_comments.append(comment_text)
+                    except Exception as e:
+                        safe_log("댓글 감성 분석 실패", level="debug", error=str(e))
+                        continue
 
                 analyzed_articles.append({
                     **article,

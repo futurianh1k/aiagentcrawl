@@ -120,9 +120,12 @@ class PlaywrightBaseScraper(ABC):
                 element = await page.wait_for_selector(selector, timeout=timeout)
                 if element:
                     text = await element.text_content()
-                    if text and len(text.strip()) > 10:
-                        print(f"[DEBUG] ✓ 텍스트 추출 성공 (셀렉터 {i}): {text[:50]}...")
-                        return text.strip()
+                    if text:
+                        stripped_text = text.strip()
+                        if len(stripped_text) > 10:
+                            preview = stripped_text[:50].replace('\n', ' ')
+                            print(f"[DEBUG] ✓ 텍스트 추출 성공 (셀렉터 {i}): {preview}...")
+                            return stripped_text
             except Exception:
                 continue
         return None

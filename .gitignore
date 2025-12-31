@@ -180,6 +180,12 @@ webdriver/
 *.webm
 *.mkv
 
+# Uploaded media files
+# ====================
+media/images/
+media/image_search_samples/
+media/tables/
+
 # Archives
 # ========
 *.zip

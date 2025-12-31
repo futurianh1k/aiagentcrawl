@@ -215,8 +215,21 @@ JSON 형식을 엄격히 지켜주세요."""
 
     def analyze_single_comment(self, comment_text: str) -> SentimentResult:
         """단일 댓글 감성 분석"""
-        if not validate_input(comment_text, max_length=1000):
-            raise ValueError("유효하지 않은 댓글입니다.")
+        # 상세한 검증 및 에러 메시지
+        if not isinstance(comment_text, str):
+            raise ValueError(f"댓글이 문자열이 아닙니다. (타입: {type(comment_text).__name__})")
+        
+        text_len = len(comment_text.strip())
+        if text_len == 0:
+            raise ValueError("댓글이 비어있습니다.")
+        
+        if text_len > 1000:
+            raise ValueError(f"댓글이 너무 깁니다. ({text_len}자, 최대 1000자)")
+        
+        # 공백만 있는 경우 처리
+        comment_text = comment_text.strip()
+        if not comment_text:
+            raise ValueError("댓글에 내용이 없습니다. (공백만 포함)")
 
         prompt = self.create_sentiment_prompt(comment_text)
 
