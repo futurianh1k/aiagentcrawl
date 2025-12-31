@@ -9,9 +9,19 @@ from app.core.config import settings
 from app.core.database import engine
 from app.models.database import Base, ImageSearchSession, ImageSearchResult
 from app.api.routes import agents, analysis, media, image_search
+from sqlalchemy import inspect
 
-# 데이터베이스 테이블 생성
-Base.metadata.create_all(bind=engine)
+# 데이터베이스 테이블 생성 (테이블이 존재하지 않는 경우에만)
+try:
+    inspector = inspect(engine)
+    existing_tables = inspector.get_table_names()
+    
+    # 존재하지 않는 테이블만 생성
+    for table in Base.metadata.tables.values():
+        if table.name not in existing_tables:
+            table.create(bind=engine, checkfirst=True)
+except Exception as e:
+    print(f"테이블 생성 중 경고: {e}")
 
 # FastAPI 앱 인스턴스 생성
 app = FastAPI(

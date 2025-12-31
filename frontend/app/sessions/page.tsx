@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Search, Trash2, Eye, Calendar, FileText, MessageSquare, AlertCircle, CheckCircle, Clock, XCircle, Download, FileSpreadsheet, FileJson, Image as ImageIcon, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
-interface Session {
+type SessionType = 'news' | 'image';
+
+interface NewsSession {
   id: number;
   keyword: string;
   status: string;
@@ -19,8 +21,19 @@ interface Session {
   completed_at?: string;
 }
 
-interface SessionListResponse {
-  sessions: Session[];
+interface ImageSession {
+  id: number;
+  query: string;
+  query_type: string;
+  search_operator: string;
+  status: string;
+  total_results: number;
+  created_at: string;
+  completed_at?: string;
+}
+
+interface NewsSessionListResponse {
+  sessions: NewsSession[];
   total: number;
   page: number;
   per_page: number;
@@ -59,7 +72,9 @@ interface UsageStats {
 
 export default function SessionsPage() {
   const router = useRouter();
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionType, setSessionType] = useState<SessionType>('news');
+  const [newsSessions, setNewsSessions] = useState<NewsSession[]>([]);
+  const [imageSessions, setImageSessions] = useState<ImageSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -97,7 +112,7 @@ export default function SessionsPage() {
     }
   };
 
-  const fetchSessions = async (pageNum: number = 1, keyword: string = '') => {
+  const fetchNewsSessions = async (pageNum: number = 1, keyword: string = '') => {
     setLoading(true);
     setError(null);
     
@@ -116,11 +131,11 @@ export default function SessionsPage() {
       );
 
       if (!response.ok) {
-        throw new Error('세션 목록을 가져오는데 실패했습니다.');
+        throw new Error('뉴스 세션 목록을 가져오는데 실패했습니다.');
       }
 
-      const data: SessionListResponse = await response.json();
-      setSessions(data.sessions);
+      const data: NewsSessionListResponse = await response.json();
+      setNewsSessions(data.sessions);
       setTotal(data.total);
       setPage(data.page);
     } catch (err) {
@@ -130,16 +145,61 @@ export default function SessionsPage() {
     }
   };
 
+  const fetchImageSessions = async (pageNum: number = 1) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const params = new URLSearchParams({
+        page: pageNum.toString(),
+        per_page: perPage.toString(),
+      });
+      
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/image-search/sessions?${params}`
+      );
+
+      if (!response.ok) {
+        throw new Error('이미지 세션 목록을 가져오는데 실패했습니다.');
+      }
+
+      const data = await response.json();
+      setImageSessions(data.sessions || []);
+      setTotal(data.total || 0);
+      setPage(data.page || 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchSessions = async (pageNum: number = 1, keyword: string = '') => {
+    if (sessionType === 'news') {
+      await fetchNewsSessions(pageNum, keyword);
+    } else {
+      await fetchImageSessions(pageNum);
+    }
+  };
+
   const handleDelete = async (sessionId: number) => {
-    if (!confirm('정말 이 분석 세션을 삭제하시겠습니까? 관련된 모든 기사와 댓글도 함께 삭제됩니다.')) {
+    const confirmMessage = sessionType === 'news'
+      ? '정말 이 뉴스 분석 세션을 삭제하시겠습니까? 관련된 모든 기사와 댓글도 함께 삭제됩니다.'
+      : '정말 이 이미지 검색 세션을 삭제하시겠습니까? 관련된 모든 검색 결과도 함께 삭제됩니다.';
+    
+    if (!confirm(confirmMessage)) {
       return;
     }
 
     setDeletingId(sessionId);
     
     try {
+      const endpoint = sessionType === 'news'
+        ? `/api/analysis/${sessionId}`
+        : `/api/image-search/sessions/${sessionId}`;
+      
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analysis/${sessionId}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}${endpoint}`,
         { method: 'DELETE' }
       );
 
@@ -279,7 +339,13 @@ export default function SessionsPage() {
 
   useEffect(() => {
     fetchSessions();
-    fetchUsageStats();
+    if (sessionType === 'news') {
+      fetchUsageStats();
+    }
+  }, [sessionType]);
+
+  useEffect(() => {
+    fetchSessions();
   }, []);
 
   const formatDate = (dateString: string) => {
@@ -339,12 +405,52 @@ export default function SessionsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">분석 세션 목록</h1>
-          <p className="text-gray-600">저장된 뉴스 분석 기록을 조회하고 관리할 수 있습니다.</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">세션 목록</h1>
+          <p className="text-gray-600">저장된 분석 기록을 조회하고 관리할 수 있습니다.</p>
         </div>
 
-        {/* LLM Usage Stats */}
-        {usageStats && usageStats.total_tokens > 0 && (
+        {/* Session Type Tabs */}
+        <div className="mb-6">
+          <div className="inline-flex bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => {
+                setSessionType('news');
+                setPage(1);
+                setSearchKeyword('');
+              }}
+              className={`px-6 py-3 rounded-md font-medium transition-all ${
+                sessionType === 'news'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center">
+                <Search className="w-5 h-5 mr-2" />
+                뉴스 감정 분석
+              </div>
+            </button>
+            <button
+              onClick={() => {
+                setSessionType('image');
+                setPage(1);
+                setSearchKeyword('');
+              }}
+              className={`px-6 py-3 rounded-md font-medium transition-all ${
+                sessionType === 'image'
+                  ? 'bg-white text-purple-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center">
+                <ImageIcon className="w-5 h-5 mr-2" />
+                이미지 검색
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* LLM Usage Stats (News sessions only) */}
+        {sessionType === 'news' && usageStats && usageStats.total_tokens > 0 && (
           <div className="card p-4 mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200">
             <h3 className="text-sm font-semibold mb-3 text-amber-800 flex items-center">
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -401,28 +507,30 @@ export default function SessionsPage() {
           </div>
         )}
 
-        {/* Search Bar */}
-        <div className="card p-4 mb-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <input
-                type="text"
-                placeholder="키워드로 검색..."
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+        {/* Search Bar (News sessions only) */}
+        {sessionType === 'news' && (
+          <div className="card p-4 mb-6">
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  placeholder="키워드로 검색..."
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <button
+                onClick={handleSearch}
+                className="btn btn-primary px-6 py-2"
+              >
+                <Search className="w-4 h-4 mr-2" />
+                검색
+              </button>
             </div>
-            <button
-              onClick={handleSearch}
-              className="btn btn-primary px-6 py-2"
-            >
-              <Search className="w-4 h-4 mr-2" />
-              검색
-            </button>
           </div>
-        </div>
+        )}
 
         {/* Loading State */}
         {loading && (
@@ -445,49 +553,50 @@ export default function SessionsPage() {
         {/* Sessions List */}
         {!loading && !error && (
           <>
-            <div className="card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        ID
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        키워드
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        상태
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        기사 수
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px]">
-                        이미지
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
-                        요약
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        토큰/비용
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        생성일시
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        작업
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {sessions.length === 0 ? (
+            {sessionType === 'news' ? (
+              <div className="card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
                       <tr>
-                        <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
-                          분석 세션이 없습니다.
-                        </td>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          ID
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          키워드
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          상태
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          기사 수
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px]">
+                          이미지
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
+                          요약
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          토큰/비용
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          생성일시
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          작업
+                        </th>
                       </tr>
-                    ) : (
-                      sessions.map((session) => (
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {newsSessions.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
+                            뉴스 분석 세션이 없습니다.
+                          </td>
+                        </tr>
+                      ) : (
+                        newsSessions.map((session) => (
                         <tr key={session.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             #{session.id}
@@ -676,6 +785,115 @@ export default function SessionsPage() {
                 </table>
               </div>
             </div>
+            ) : (
+              <div className="card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          ID
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          검색어
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          검색 타입
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          연산자
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          상태
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          결과 수
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          생성일시
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          작업
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {imageSessions.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                            이미지 검색 세션이 없습니다.
+                          </td>
+                        </tr>
+                      ) : (
+                        imageSessions.map((session) => (
+                          <tr key={session.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              #{session.id}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <span className="font-semibold">{session.query}</span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">
+                                {session.query_type === 'text' ? '텍스트' : session.query_type === 'image' ? '이미지' : '혼합'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                                {session.search_operator}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                {getStatusIcon(session.status)}
+                                <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(session.status)}`}>
+                                  {getStatusText(session.status)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <div className="flex items-center">
+                                <ImageIcon className="w-4 h-4 mr-1" />
+                                {session.total_results}개
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <div className="flex items-center">
+                                <Calendar className="w-4 h-4 mr-1" />
+                                {formatDate(session.created_at)}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => router.push(`/image-search?session_id=${session.id}`)}
+                                  className="text-blue-600 hover:text-blue-900 p-2 hover:bg-blue-50 rounded"
+                                  title="상세 보기"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(session.id)}
+                                  disabled={deletingId === session.id}
+                                  className="text-red-600 hover:text-red-900 p-2 hover:bg-red-50 rounded disabled:opacity-50"
+                                  title="삭제"
+                                >
+                                  {deletingId === session.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Pagination */}
             {totalPages > 1 && (

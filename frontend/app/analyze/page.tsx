@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import SentimentChart from '@/components/SentimentChart';
 import KeywordCloud from '@/components/KeywordCloud';
 import ArticleList from '@/components/ArticleList';
-import { Loader2, RefreshCw, AlertCircle, Download, FileSpreadsheet, FileJson, Image as ImageIcon, Table as TableIcon, X } from 'lucide-react';
+import { Loader2, RefreshCw, AlertCircle, Download, FileSpreadsheet, FileJson } from 'lucide-react';
 
 interface TimingInfo {
   crawling_time: number;
@@ -66,9 +66,6 @@ export default function AnalyzePage() {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [mediaData, setMediaData] = useState<any>(null);
-  const [showMediaGallery, setShowMediaGallery] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const handleExport = async (format: 'csv' | 'json') => {
     if (!sessionId) return;
@@ -129,30 +126,10 @@ export default function AnalyzePage() {
       const data = await response.json();
       setAnalysisData(data);
       setError(null);
-      
-      // 미디어 데이터도 가져오기
-      fetchMediaData();
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchMediaData = async () => {
-    if (!sessionId) return;
-    
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/media/session/${sessionId}`
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setMediaData(data);
-      }
-    } catch (err) {
-      console.error('미디어 데이터 로딩 실패:', err);
     }
   };
 
@@ -387,118 +364,6 @@ export default function AnalyzePage() {
           </div>
         </div>
 
-        {/* Media Gallery Section */}
-        {mediaData && (mediaData.total_images > 0 || mediaData.total_tables > 0) && (
-          <div className="card p-6 mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold flex items-center">
-                <ImageIcon className="w-6 h-6 mr-2 text-blue-600" />
-                미디어 갤러리
-                <span className="ml-2 text-sm font-normal text-gray-500">
-                  (이미지 {mediaData.total_images}개, 테이블 {mediaData.total_tables}개)
-                </span>
-              </h2>
-              <button
-                onClick={() => setShowMediaGallery(!showMediaGallery)}
-                className="text-blue-600 hover:text-blue-800 text-sm"
-              >
-                {showMediaGallery ? '접기' : '펼치기'}
-              </button>
-            </div>
-            
-            {showMediaGallery && (
-              <div className="space-y-6">
-                {mediaData.articles?.map((articleMedia: any) => (
-                  <div key={articleMedia.article_id} className="border-b pb-4">
-                    <h3 className="font-medium text-gray-800 mb-3">
-                      {articleMedia.article_title}...
-                    </h3>
-                    
-                    {/* 이미지 그리드 */}
-                    {articleMedia.images?.length > 0 && (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                        {articleMedia.images.map((img: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
-                            onClick={() => setSelectedImage(img.url)}
-                          >
-                            <img
-                              src={img.url?.startsWith('/api') 
-                                ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${img.url}`
-                                : img.url
-                              }
-                              alt={img.caption || '기사 이미지'}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = '/placeholder-image.png';
-                              }}
-                            />
-                            {img.caption && (
-                              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate">
-                                {img.caption}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* 테이블 미리보기 */}
-                    {articleMedia.tables?.length > 0 && (
-                      <div className="space-y-2">
-                        {articleMedia.tables.map((tbl: any, idx: number) => (
-                          <div key={idx} className="flex items-center text-sm text-gray-600">
-                            <TableIcon className="w-4 h-4 mr-2 text-green-600" />
-                            <span>{tbl.caption || `테이블 ${idx + 1}`}</span>
-                            {tbl.url && (
-                              <a
-                                href={tbl.url?.startsWith('/api')
-                                  ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${tbl.url}`
-                                  : tbl.url
-                                }
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="ml-2 text-blue-600 hover:underline"
-                              >
-                                보기
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Image Modal */}
-        {selectedImage && (
-          <div 
-            className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
-            onClick={() => setSelectedImage(null)}
-          >
-            <div className="relative max-w-4xl max-h-[90vh]">
-              <button
-                onClick={() => setSelectedImage(null)}
-                className="absolute top-2 right-2 text-white bg-black bg-opacity-50 rounded-full p-2 hover:bg-opacity-75"
-              >
-                <X className="w-6 h-6" />
-              </button>
-              <img
-                src={selectedImage.startsWith('/api')
-                  ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${selectedImage}`
-                  : selectedImage
-                }
-                alt="확대 이미지"
-                className="max-w-full max-h-[90vh] object-contain"
-              />
-            </div>
-          </div>
-        )}
 
         {/* Articles List */}
         <div className="card p-6">

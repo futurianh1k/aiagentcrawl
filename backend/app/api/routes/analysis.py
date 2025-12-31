@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func  # SQLAlchemy func 추가
 from app.api.dependencies import get_database_session
 from app.schemas.requests import AnalysisResponse, SessionListResponse
-from app.models.database import AnalysisSession, Article, Comment, Keyword, SearchHistory
+from app.models.database import AnalysisSession, Article, Comment, Keyword, SearchHistory, ArticleMedia
 
 router = APIRouter()
 
@@ -550,14 +550,30 @@ async def delete_analysis_session(
     if not session:
         raise HTTPException(status_code=404, detail="분석 세션을 찾을 수 없습니다")
 
-    # 관련 데이터 삭제 (CASCADE로 자동 삭제되지만 명시적으로 처리)
-    db.query(Comment).filter(Comment.article_id.in_(
-        db.query(Article.id).filter(Article.session_id == session_id)
-    )).delete(synchronize_session=False)
-
-    db.query(Article).filter(Article.session_id == session_id).delete()
-    db.query(Keyword).filter(Keyword.session_id == session_id).delete()
-    db.delete(session)
-    db.commit()
-
-    return {"message": "분석 세션이 삭제되었습니다"}
+    try:
+        # 관련 데이터 삭제 (외래키 제약조건을 고려한 올바른 순서)
+        # 먼저 해당 세션의 모든 기사 ID 조회
+        articles = db.query(Article).filter(Article.session_id == session_id).all()
+        article_ids = [article.id for article in articles]
+        
+        if article_ids:
+            # 1. ArticleMedia 삭제 (Article을 참조하는 자식 테이블)
+            db.query(ArticleMedia).filter(ArticleMedia.article_id.in_(article_ids)).delete(synchronize_session=False)
+            
+            # 2. Comment 삭제 (Article을 참조하는 자식 테이블)
+            db.query(Comment).filter(Comment.article_id.in_(article_ids)).delete(synchronize_session=False)
+        
+        # 3. Article 삭제
+        db.query(Article).filter(Article.session_id == session_id).delete(synchronize_session=False)
+        
+        # 4. Keyword 삭제
+        db.query(Keyword).filter(Keyword.session_id == session_id).delete(synchronize_session=False)
+        
+        # 5. AnalysisSession 삭제
+        db.delete(session)
+        db.commit()
+        
+        return {"message": "분석 세션이 삭제되었습니다"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"세션 삭제 중 오류가 발생했습니다: {str(e)}")

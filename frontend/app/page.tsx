@@ -2,13 +2,16 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import SearchForm from '@/components/SearchForm';
+import ImageSearchForm from '@/components/ImageSearchForm';
 import { Search, TrendingUp, BarChart3, Users, Image as ImageIcon } from 'lucide-react';
+
+type SearchType = 'news' | 'image';
 
 export default function HomePage() {
   const router = useRouter();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [searchType, setSearchType] = useState<SearchType>('news');
 
   const handleAnalysis = async (keyword: string, sources: string[], maxArticles: number) => {
     setIsAnalyzing(true);
@@ -47,10 +50,10 @@ export default function HomePage() {
       <section className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-6xl font-bold mb-6 animate-fade-in">
-            AI Agent 뉴스 감정 분석
+            AI Agent 검색 시스템
           </h1>
           <p className="text-xl md:text-2xl mb-8 animate-slide-up">
-            LangChain과 OpenAI를 활용한 실시간 뉴스 감정 분석 시스템
+            LangChain과 OpenAI를 활용한 뉴스 감정 분석 및 이미지 검색
           </p>
           <div className="flex justify-center items-center space-x-8 text-sm">
             <div className="flex items-center">
@@ -62,8 +65,8 @@ export default function HomePage() {
               실시간 감정 분석
             </div>
             <div className="flex items-center">
-              <BarChart3 className="w-5 h-5 mr-2" />
-              데이터 시각화
+              <ImageIcon className="w-5 h-5 mr-2" />
+              이미지 검색
             </div>
           </div>
         </div>
@@ -72,27 +75,64 @@ export default function HomePage() {
       {/* Search Section */}
       <section className="py-16">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              뉴스 감정 분석 시작하기
-            </h2>
-            <p className="text-lg text-gray-600">
-              키워드를 입력하고 AI Agent가 뉴스를 수집하여 감정을 분석합니다
-            </p>
+          {/* Search Type Tabs */}
+          <div className="flex justify-center mb-8">
+            <div className="inline-flex bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setSearchType('news')}
+                className={`px-6 py-3 rounded-md font-medium transition-all ${
+                  searchType === 'news'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <div className="flex items-center">
+                  <Search className="w-5 h-5 mr-2" />
+                  뉴스 감정 분석
+                </div>
+              </button>
+              <button
+                onClick={() => setSearchType('image')}
+                className={`px-6 py-3 rounded-md font-medium transition-all ${
+                  searchType === 'image'
+                    ? 'bg-white text-purple-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <div className="flex items-center">
+                  <ImageIcon className="w-5 h-5 mr-2" />
+                  이미지 검색
+                </div>
+              </button>
+            </div>
           </div>
 
-          <SearchForm onAnalyze={handleAnalysis} isLoading={isAnalyzing} />
-          
-          {/* Image Search Link */}
-          <div className="mt-8 text-center">
-            <Link
-              href="/image-search"
-              className="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-            >
-              <ImageIcon className="w-5 h-5 mr-2" />
-              이미지 검색하기
-            </Link>
-          </div>
+          {/* Search Form */}
+          {searchType === 'news' ? (
+            <div>
+              <div className="text-center mb-8">
+                <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                  뉴스 감정 분석 시작하기
+                </h2>
+                <p className="text-lg text-gray-600">
+                  키워드를 입력하고 AI Agent가 뉴스를 수집하여 감정을 분석합니다
+                </p>
+              </div>
+              <SearchForm onAnalyze={handleAnalysis} isLoading={isAnalyzing} />
+            </div>
+          ) : (
+            <div>
+              <div className="text-center mb-8">
+                <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                  이미지 검색 시작하기
+                </h2>
+                <p className="text-lg text-gray-600">
+                  프롬프트로 이미지를 검색하거나 샘플 이미지를 업로드하여 유사한 이미지를 찾습니다
+                </p>
+              </div>
+              <ImageSearchForm isLoading={isAnalyzing} />
+            </div>
+          )}
         </div>
       </section>
 
