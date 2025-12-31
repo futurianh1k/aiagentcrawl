@@ -76,11 +76,84 @@ export interface AnalysisResponse {
   completed_at?: string;
 }
 
+// 인증 관련 인터페이스
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  full_name?: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+export interface UserResponse {
+  id: number;
+  email: string;
+  full_name?: string;
+  is_active: boolean;
+  is_verified: boolean;
+  created_at: string;
+  last_login_at?: string;
+}
+
+// 인증 API 함수들
+export const authApi = {
+  // 회원 가입
+  register: async (data: RegisterRequest): Promise<{ message: string; detail?: string }> => {
+    const response = await api.post('/api/auth/register', data);
+    return response.data;
+  },
+
+  // 로그인
+  login: async (data: LoginRequest): Promise<TokenResponse> => {
+    const response = await api.post('/api/auth/login', data);
+    return response.data;
+  },
+
+  // 현재 사용자 정보 조회
+  getCurrentUser: async (token: string): Promise<UserResponse> => {
+    const response = await api.get('/api/auth/me', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return response.data;
+  },
+
+  // 토큰 갱신
+  refreshToken: async (refreshToken: string): Promise<TokenResponse> => {
+    const response = await api.post('/api/auth/refresh', {
+      refresh_token: refreshToken,
+    });
+    return response.data;
+  },
+
+  // 이메일 인증
+  verifyEmail: async (token: string): Promise<{ message: string }> => {
+    const response = await api.post('/api/auth/verify-email', { token });
+    return response.data;
+  },
+};
+
 // API 함수들
 export const newsApi = {
-  // 뉴스 감정 분석 시작
-  analyzeNews: async (data: AnalysisRequest): Promise<AnalysisResponse> => {
-    const response = await api.post('/api/agents/analyze', data);
+  // 뉴스 감정 분석 시작 (선택적 인증)
+  analyzeNews: async (data: AnalysisRequest, token?: string): Promise<AnalysisResponse> => {
+    const config = token ? {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    } : {};
+    const response = await api.post('/api/agents/analyze', data, config);
     return response.data;
   },
 

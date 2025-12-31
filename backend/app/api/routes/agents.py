@@ -5,44 +5,71 @@ AI Agent 라우터
 
 import json
 from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from app.api.dependencies import get_agent_service, get_database_session
+from app.api.dependencies import get_agent_service, get_database_session, get_current_user_optional
 from app.schemas.requests import AnalysisRequest, AnalysisResponse
 from app.services.agent_service import NewsAnalysisAgent
-from app.models.database import AnalysisSession, Article, Comment, Keyword, SearchHistory, ArticleMedia
+from app.models.database import AnalysisSession, Article, Comment, Keyword, SearchHistory, ArticleMedia, User
 from app.services.media_service import media_service
 
 router = APIRouter()
+
+# Freemium 설정
+MAX_ARTICLES_FREE = 3  # 비로그인 사용자 최대 기사 수
+MAX_ARTICLES_PREMIUM = 50  # 로그인 사용자 최대 기사 수
 
 @router.post("/analyze", response_model=AnalysisResponse)
 async def analyze_news(
     request: AnalysisRequest,
     background_tasks: BackgroundTasks,
+    current_user: Optional[User] = Depends(get_current_user_optional),
     agent_service: NewsAnalysisAgent = Depends(get_agent_service),
     db: Session = Depends(get_database_session)
 ):
-    """뉴스 감정 분석 시작"""
+    """
+    뉴스 감정 분석 시작
 
-    # 검색 히스토리 저장/업데이트
-    existing_history = db.query(SearchHistory).filter(
-        SearchHistory.keyword == request.keyword
-    ).first()
-    
-    if existing_history:
-        existing_history.search_count += 1
-        existing_history.sources = json.dumps(request.sources)
-        existing_history.max_articles = request.max_articles
+    Freemium 모델:
+    - 비로그인: 최대 3개 기사
+    - 로그인: 최대 50개 기사 + 검색 이력 저장
+    """
+
+    # Freemium 로직: 비로그인 사용자 제한
+    actual_max_articles = request.max_articles
+    is_premium_user = current_user is not None
+
+    if not is_premium_user:
+        # 비로그인 사용자는 최대 3개로 제한
+        if actual_max_articles > MAX_ARTICLES_FREE:
+            actual_max_articles = MAX_ARTICLES_FREE
     else:
-        new_history = SearchHistory(
-            keyword=request.keyword,
-            sources=json.dumps(request.sources),
-            max_articles=request.max_articles
-        )
-        db.add(new_history)
-    
+        # 로그인 사용자는 최대 50개로 제한
+        if actual_max_articles > MAX_ARTICLES_PREMIUM:
+            actual_max_articles = MAX_ARTICLES_PREMIUM
+
+    # 검색 히스토리 저장/업데이트 (로그인 사용자만)
+    if is_premium_user:
+        existing_history = db.query(SearchHistory).filter(
+            SearchHistory.keyword == request.keyword
+        ).first()
+
+        if existing_history:
+            existing_history.search_count += 1
+            existing_history.sources = json.dumps(request.sources)
+            existing_history.max_articles = actual_max_articles
+        else:
+            new_history = SearchHistory(
+                keyword=request.keyword,
+                sources=json.dumps(request.sources),
+                max_articles=actual_max_articles
+            )
+            db.add(new_history)
+
     # 분석 세션 생성
     session = AnalysisSession(
+        user_id=current_user.id if current_user else None,  # 로그인 사용자 ID 저장
         keyword=request.keyword,
         sources=json.dumps(request.sources),
         status="processing"
@@ -52,11 +79,11 @@ async def analyze_news(
     db.refresh(session)
 
     try:
-        # AI Agent 분석 실행
+        # AI Agent 분석 실행 (실제 제한된 개수로)
         analysis_result = await agent_service.analyze_news(
             keyword=request.keyword,
             sources=request.sources,
-            max_articles=request.max_articles
+            max_articles=actual_max_articles
         )
 
         # 데이터베이스에 결과 저장

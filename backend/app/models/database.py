@@ -48,21 +48,23 @@ class AnalysisSession(Base):
     __tablename__ = "analysis_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)  # NULL = 비로그인 사용자
     keyword = Column(String(255), nullable=False, index=True)
     sources = Column(Text)  # JSON 문자열로 저장
     status = Column(String(50), default="pending")  # pending, processing, completed, failed
     overall_summary = Column(Text)  # 세션 전체 요약본
-    
+
     # LLM 토큰 사용량 추적
     prompt_tokens = Column(Integer, default=0)  # 프롬프트 토큰
     completion_tokens = Column(Integer, default=0)  # 완료 토큰
     total_tokens = Column(Integer, default=0)  # 총 토큰
     estimated_cost = Column(Float, default=0.0)  # 예상 비용 (USD)
-    
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True))
 
     # 관계 설정
+    user = relationship("User", backref="analysis_sessions")
     articles = relationship("Article", back_populates="session")
 
 class Article(Base):
