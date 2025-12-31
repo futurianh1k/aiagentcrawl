@@ -27,3 +27,19 @@ sqlalchemy>=2.0.0
 # 문서 처리 (선택사항)
 python-docx>=1.0.0
 
+# FastAPI 웹 프레임워크
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# 보안 및 인증
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.6
+email-validator>=2.0.0
+PyMySQL>=1.1.0
+
+# 이메일 전송
+aiosmtplib>=2.0.0
+

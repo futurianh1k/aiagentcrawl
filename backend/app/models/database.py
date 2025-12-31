@@ -3,10 +3,45 @@
 SQLAlchemy ORM 모델들
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Float, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, Float, ForeignKey, Boolean, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
+
+
+class User(Base):
+    """사용자 모델 - 한국 정부 IT 보안 규정 준수"""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(100))
+
+    # 계정 상태
+    is_active = Column(Boolean, default=True)  # 계정 활성화 여부
+    is_verified = Column(Boolean, default=False)  # 이메일 인증 여부
+    is_superuser = Column(Boolean, default=False)  # 관리자 여부
+
+    # 보안 관련
+    failed_login_attempts = Column(Integer, default=0)  # 로그인 실패 횟수
+    locked_until = Column(DateTime(timezone=True), nullable=True)  # 계정 잠금 시간
+    last_login_at = Column(DateTime(timezone=True), nullable=True)  # 마지막 로그인 시간
+    password_changed_at = Column(DateTime(timezone=True), server_default=func.now())  # 비밀번호 변경 시간
+
+    # 이메일 인증
+    email_verification_token = Column(String(255), nullable=True)  # 이메일 인증 토큰
+    email_verification_token_expires = Column(DateTime(timezone=True), nullable=True)  # 토큰 만료 시간
+
+    # 타임스탬프
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # 인덱스 추가 (보안 및 성능 향상)
+    __table_args__ = (
+        Index('idx_email_active', 'email', 'is_active'),
+        Index('idx_locked_until', 'locked_until'),
+    )
 
 class AnalysisSession(Base):
     """분석 세션 모델"""
