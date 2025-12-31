@@ -258,6 +258,11 @@ async def get_analysis_sessions(
             "status": session.status,
             "article_count": article_count,
             "overall_summary": session.overall_summary or "",  # 종합 요약 미리보기
+            # 토큰 사용량 정보
+            "prompt_tokens": session.prompt_tokens or 0,
+            "completion_tokens": session.completion_tokens or 0,
+            "total_tokens": session.total_tokens or 0,
+            "estimated_cost": session.estimated_cost or 0.0,
             "created_at": session.created_at,
             "completed_at": session.completed_at
         })
@@ -268,6 +273,93 @@ async def get_analysis_sessions(
         page=page,
         per_page=per_page
     )
+
+@router.get("/stats/usage")
+async def get_llm_usage_stats(
+    db: Session = Depends(get_database_session)
+):
+    """LLM 토큰 사용량 통계"""
+    
+    # 완료된 세션의 토큰 사용량 합계
+    usage_stats = db.query(
+        func.count(AnalysisSession.id).label('total_sessions'),
+        func.sum(AnalysisSession.prompt_tokens).label('total_prompt_tokens'),
+        func.sum(AnalysisSession.completion_tokens).label('total_completion_tokens'),
+        func.sum(AnalysisSession.total_tokens).label('total_tokens'),
+        func.sum(AnalysisSession.estimated_cost).label('total_cost')
+    ).filter(AnalysisSession.status == "completed").first()
+    
+    total_sessions = usage_stats.total_sessions or 0
+    total_prompt_tokens = usage_stats.total_prompt_tokens or 0
+    total_completion_tokens = usage_stats.total_completion_tokens or 0
+    total_tokens = usage_stats.total_tokens or 0
+    total_cost = float(usage_stats.total_cost or 0.0)
+    
+    # Free tier 한도 (OpenAI 기본 $5.00, 설정 가능)
+    free_credit_limit = 5.0
+    remaining_credit = max(0, free_credit_limit - total_cost)
+    usage_percentage = min(100, (total_cost / free_credit_limit * 100)) if free_credit_limit > 0 else 0
+    
+    # 사람이 읽기 쉬운 형식
+    def format_tokens(n: int) -> str:
+        if n >= 1_000_000:
+            return f"{n/1_000_000:.2f}M"
+        elif n >= 1_000:
+            return f"{n/1_000:.1f}K"
+        return str(n)
+    
+    # 최근 5개 세션 사용량
+    recent_sessions = db.query(
+        AnalysisSession.id,
+        AnalysisSession.keyword,
+        AnalysisSession.total_tokens,
+        AnalysisSession.estimated_cost,
+        AnalysisSession.created_at
+    ).filter(
+        AnalysisSession.status == "completed",
+        AnalysisSession.total_tokens > 0
+    ).order_by(
+        AnalysisSession.created_at.desc()
+    ).limit(5).all()
+    
+    return {
+        "total_sessions": total_sessions,
+        "total_prompt_tokens": total_prompt_tokens,
+        "total_completion_tokens": total_completion_tokens,
+        "total_tokens": total_tokens,
+        "total_estimated_cost": round(total_cost, 6),
+        
+        # 사람이 읽기 쉬운 형식
+        "total_tokens_formatted": format_tokens(total_tokens),
+        "total_cost_formatted": f"${total_cost:.4f}",
+        
+        # Free tier 정보
+        "free_credit_limit": free_credit_limit,
+        "remaining_credit": round(remaining_credit, 4),
+        "usage_percentage": round(usage_percentage, 2),
+        
+        # 최근 세션별 사용량
+        "recent_usage": [
+            {
+                "session_id": s.id,
+                "keyword": s.keyword,
+                "tokens": s.total_tokens,
+                "tokens_formatted": format_tokens(s.total_tokens or 0),
+                "cost": round(s.estimated_cost or 0, 6),
+                "created_at": s.created_at.isoformat() if s.created_at else None
+            }
+            for s in recent_sessions
+        ],
+        
+        # 가격 정보 (gpt-4o-mini 기준)
+        "pricing_info": {
+            "model": "gpt-4o-mini",
+            "input_price_per_1m": 0.15,
+            "output_price_per_1m": 0.6,
+            "currency": "USD"
+        }
+    }
+
 
 @router.get("/stats/summary")
 async def get_statistics_summary(
@@ -423,6 +515,16 @@ async def get_analysis_result(
         article_data["sentiment_label"] = normalized_label  # 영어로 변환된 레이블로 업데이트
         sentiment_distribution[normalized_label] = sentiment_distribution.get(normalized_label, 0) + 1
 
+    # 토큰 사용량 정보
+    token_usage = None
+    if session.total_tokens and session.total_tokens > 0:
+        token_usage = {
+            "prompt_tokens": session.prompt_tokens or 0,
+            "completion_tokens": session.completion_tokens or 0,
+            "total_tokens": session.total_tokens or 0,
+            "estimated_cost": session.estimated_cost or 0.0
+        }
+    
     return AnalysisResponse(
         session_id=session.id,
         keyword=session.keyword,
@@ -432,6 +534,7 @@ async def get_analysis_result(
         keywords=keywords_data,
         articles=articles_data,
         overall_summary=session.overall_summary or "",  # 종합 요약
+        token_usage=token_usage,  # 토큰 사용량
         created_at=session.created_at,
         completed_at=session.completed_at
     )

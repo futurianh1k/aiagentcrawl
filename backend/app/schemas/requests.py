@@ -26,6 +26,13 @@ class TimingInfo(BaseModel):
     summary_time: float = Field(default=0.0, description="요약 생성 소요 시간(초)")
     total_time: float = Field(default=0.0, description="총 소요 시간(초)")
 
+class TokenUsage(BaseModel):
+    """LLM 토큰 사용량 스키마"""
+    prompt_tokens: int = Field(default=0, description="프롬프트 토큰 수")
+    completion_tokens: int = Field(default=0, description="완료 토큰 수")
+    total_tokens: int = Field(default=0, description="총 토큰 수")
+    estimated_cost: float = Field(default=0.0, description="예상 비용 (USD)")
+
 class KeywordData(BaseModel):
     """키워드 데이터 스키마"""
     keyword: str = Field(..., description="키워드")
@@ -57,6 +64,7 @@ class AnalysisResponse(BaseModel):
     articles: List[ArticleData] = Field(default=[], description="기사 목록")
     overall_summary: Optional[str] = Field(default="", description="종합 요약")
     timing: Optional[TimingInfo] = Field(default=None, description="성능 측정 정보")
+    token_usage: Optional[TokenUsage] = Field(default=None, description="LLM 토큰 사용량")
     created_at: datetime = Field(..., description="생성 시간")
     completed_at: Optional[datetime] = Field(default=None, description="완료 시간")
 
@@ -71,3 +79,20 @@ class ErrorResponse(BaseModel):
     """에러 응답 스키마"""
     detail: str = Field(..., description="에러 메시지")
     error_code: Optional[str] = Field(default=None, description="에러 코드")
+
+class UsageStatsResponse(BaseModel):
+    """전체 사용량 통계 응답 스키마"""
+    total_sessions: int = Field(default=0, description="총 세션 수")
+    total_prompt_tokens: int = Field(default=0, description="총 프롬프트 토큰")
+    total_completion_tokens: int = Field(default=0, description="총 완료 토큰")
+    total_tokens: int = Field(default=0, description="총 토큰 수")
+    total_estimated_cost: float = Field(default=0.0, description="총 예상 비용 (USD)")
+    
+    # 사람이 읽기 쉬운 형식
+    total_tokens_formatted: str = Field(default="0", description="토큰 수 (포맷)")
+    total_cost_formatted: str = Field(default="$0.00", description="비용 (포맷)")
+    
+    # Free tier 정보 (OpenAI Free tier: $5.00 기본 제공)
+    free_credit_limit: float = Field(default=5.0, description="무료 크레딧 한도 (USD)")
+    remaining_credit: float = Field(default=5.0, description="잔여 크레딧 (USD)")
+    usage_percentage: float = Field(default=0.0, description="사용률 (%)")

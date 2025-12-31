@@ -180,6 +180,14 @@ async def analyze_news(
         session.status = "completed"
         session.completed_at = datetime.now()
         session.overall_summary = analysis_result.get("overall_summary", "")  # 종합 요약 저장
+        
+        # 토큰 사용량 저장
+        token_usage = analysis_result.get("token_usage", {})
+        session.prompt_tokens = token_usage.get("prompt_tokens", 0)
+        session.completion_tokens = token_usage.get("completion_tokens", 0)
+        session.total_tokens = token_usage.get("total_tokens", 0)
+        session.estimated_cost = token_usage.get("estimated_cost", 0.0)
+        
         db.commit()
 
         # 응답 데이터 구성
@@ -193,6 +201,7 @@ async def analyze_news(
             articles=articles_data,
             overall_summary=session.overall_summary or "",  # 종합 요약
             timing=analysis_result.get("timing"),  # 성능 측정 정보
+            token_usage=analysis_result.get("token_usage"),  # LLM 토큰 사용량
             created_at=session.created_at,
             completed_at=session.completed_at
         )

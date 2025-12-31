@@ -189,6 +189,15 @@ class NewsAnalysisAgent:
             "summary_time": 0.0,
             "total_time": 0.0
         }
+        
+        # LLM 토큰 사용량 추적
+        token_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "estimated_cost": 0.0  # USD
+        }
+        
         total_start_time = time.time()
 
         try:
@@ -369,11 +378,17 @@ class NewsAnalysisAgent:
             # 기사 요약 생성 (별도 단계로 분리)
             summary_start = time.time()
             for i, analyzed_article in enumerate(analyzed_articles):
-                article_summary = self._summarize_article(
+                summary_result = self._summarize_article(
                     analyzed_article.get('title', ''),
                     analyzed_article.get('content', '')
                 )
-                analyzed_articles[i]["summary"] = article_summary
+                analyzed_articles[i]["summary"] = summary_result["summary"]
+                
+                # 토큰 사용량 누적
+                usage = summary_result.get("usage", {})
+                token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                token_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                token_usage["total_tokens"] += usage.get("total_tokens", 0)
 
             # 3단계: 전체 동향 분석
             if all_comments:
@@ -399,15 +414,29 @@ class NewsAnalysisAgent:
             keywords = self._extract_keywords(analyzed_articles, keyword)
 
             # 6단계: 전체 종합 요약 생성
-            overall_summary = self._generate_overall_summary(
+            overall_result = self._generate_overall_summary(
                 analyzed_articles, 
                 keyword, 
                 sentiment_distribution
             )
+            overall_summary = overall_result["summary"]
+            
+            # 종합 요약 토큰 사용량 추가
+            overall_usage = overall_result.get("usage", {})
+            token_usage["prompt_tokens"] += overall_usage.get("prompt_tokens", 0)
+            token_usage["completion_tokens"] += overall_usage.get("completion_tokens", 0)
+            token_usage["total_tokens"] += overall_usage.get("total_tokens", 0)
+            
+            # 예상 비용 계산 (gpt-4o-mini 가격 기준: input $0.15/1M, output $0.6/1M)
+            token_usage["estimated_cost"] = round(
+                (token_usage["prompt_tokens"] * 0.15 / 1_000_000) +
+                (token_usage["completion_tokens"] * 0.6 / 1_000_000),
+                6
+            )
 
             # 요약 시간 기록 (기사 요약 + 종합 요약)
             timing_info["summary_time"] = round(time.time() - summary_start, 2)
-            safe_log(f"요약 생성 완료: {timing_info['summary_time']}초", level="info")
+            safe_log(f"요약 생성 완료: {timing_info['summary_time']}초, 토큰: {token_usage['total_tokens']}", level="info")
 
             # 총 소요 시간
             timing_info["total_time"] = round(time.time() - total_start_time, 2)
@@ -422,10 +451,11 @@ class NewsAnalysisAgent:
                 "keywords": keywords,
                 "overall_summary": overall_summary,
                 "timing": timing_info,  # 성능 측정 정보 추가
+                "token_usage": token_usage,  # LLM 토큰 사용량 추가
                 "analyzed_at": datetime.now().isoformat()
             }
 
-            safe_log(f"뉴스 분석 완료 (총 {timing_info['total_time']}초)", level="info", total_articles=len(analyzed_articles))
+            safe_log(f"뉴스 분석 완료 (총 {timing_info['total_time']}초, 토큰: {token_usage['total_tokens']})", level="info", total_articles=len(analyzed_articles))
             return result
 
         except Exception as e:
@@ -526,6 +556,12 @@ class NewsAnalysisAgent:
             "summary_time": 0.0,
             "total_time": 0.0
         }
+        token_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "estimated_cost": 0.0
+        }
         
         all_articles = []
         all_keywords_data = []
@@ -566,6 +602,12 @@ class NewsAnalysisAgent:
                     timing_info["sentiment_time"] += result_timing.get("sentiment_time", 0)
                     timing_info["summary_time"] += result_timing.get("summary_time", 0)
                     
+                    # 토큰 사용량 합산
+                    result_tokens = result.get("token_usage", {})
+                    token_usage["prompt_tokens"] += result_tokens.get("prompt_tokens", 0)
+                    token_usage["completion_tokens"] += result_tokens.get("completion_tokens", 0)
+                    token_usage["total_tokens"] += result_tokens.get("total_tokens", 0)
+                    
                     # 키워드 데이터 병합
                     all_keywords_data.extend(result.get("keywords", []))
                     
@@ -582,13 +624,27 @@ class NewsAnalysisAgent:
         
         # 전체 종합 요약 생성
         summary_start = time.time()
-        overall_summary = self._generate_overall_summary(
+        overall_result = self._generate_overall_summary(
             all_articles,
             " || ".join(keywords),
             combined_sentiment
         )
-        timing_info["summary_time"] += round(time.time() - summary_start, 2)
+        overall_summary = overall_result["summary"]
         
+        # 종합 요약 토큰 사용량 추가
+        overall_usage = overall_result.get("usage", {})
+        token_usage["prompt_tokens"] += overall_usage.get("prompt_tokens", 0)
+        token_usage["completion_tokens"] += overall_usage.get("completion_tokens", 0)
+        token_usage["total_tokens"] += overall_usage.get("total_tokens", 0)
+        
+        # 예상 비용 계산
+        token_usage["estimated_cost"] = round(
+            (token_usage["prompt_tokens"] * 0.15 / 1_000_000) +
+            (token_usage["completion_tokens"] * 0.6 / 1_000_000),
+            6
+        )
+        
+        timing_info["summary_time"] += round(time.time() - summary_start, 2)
         timing_info["total_time"] = round(time.time() - total_start_time, 2)
         
         # 결과 조합
@@ -603,6 +659,7 @@ class NewsAnalysisAgent:
             "keywords": all_keywords_data[:20],  # 상위 20개
             "overall_summary": overall_summary,
             "timing": timing_info,
+            "token_usage": token_usage,
             "analyzed_at": datetime.now().isoformat()
         }
 
@@ -619,6 +676,12 @@ class NewsAnalysisAgent:
             "sentiment_time": 0.0,
             "summary_time": 0.0,
             "total_time": 0.0
+        }
+        token_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "estimated_cost": 0.0
         }
         total_start_time = time.time()
         
@@ -706,11 +769,24 @@ class NewsAnalysisAgent:
             # 3단계: 요약 생성
             summary_start = time.time()
             for i, analyzed_article in enumerate(analyzed_articles):
-                article_summary = self._summarize_article(
+                summary_result = self._summarize_article(
                     analyzed_article.get('title', ''),
                     analyzed_article.get('content', '')
                 )
-                analyzed_articles[i]["summary"] = article_summary
+                analyzed_articles[i]["summary"] = summary_result["summary"]
+                
+                # 토큰 사용량 누적
+                usage = summary_result.get("usage", {})
+                token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                token_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                token_usage["total_tokens"] += usage.get("total_tokens", 0)
+            
+            # 예상 비용 계산
+            token_usage["estimated_cost"] = round(
+                (token_usage["prompt_tokens"] * 0.15 / 1_000_000) +
+                (token_usage["completion_tokens"] * 0.6 / 1_000_000),
+                6
+            )
             
             sentiment_distribution = self._calculate_sentiment_distribution(analyzed_articles)
             keywords_data = self._extract_keywords(analyzed_articles, keyword)
@@ -724,7 +800,8 @@ class NewsAnalysisAgent:
                 "articles": analyzed_articles,
                 "sentiment_distribution": sentiment_distribution,
                 "keywords": keywords_data,
-                "timing": timing_info
+                "timing": timing_info,
+                "token_usage": token_usage
             }
             
         except Exception as e:
@@ -753,10 +830,17 @@ class NewsAnalysisAgent:
             for keyword, freq in sorted_keywords
         ]
 
-    def _summarize_article(self, title: str, content: str) -> str:
-        """OpenAI를 사용하여 기사 내용 요약"""
+    def _summarize_article(self, title: str, content: str) -> Dict[str, Any]:
+        """
+        OpenAI를 사용하여 기사 내용 요약
+        
+        Returns:
+            {"summary": "요약 텍스트", "usage": {"prompt_tokens": N, "completion_tokens": N, "total_tokens": N}}
+        """
+        result = {"summary": "", "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}
+        
         if not OPENAI_AVAILABLE or not self.openai_api_key:
-            return ""
+            return result
         
         try:
             client = OpenAI(api_key=self.openai_api_key)
@@ -780,15 +864,32 @@ class NewsAnalysisAgent:
                 temperature=0.3
             )
             
-            return response.choices[0].message.content.strip()
+            result["summary"] = response.choices[0].message.content.strip()
+            
+            # 토큰 사용량 추출
+            if response.usage:
+                result["usage"] = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+            
+            return result
         except Exception as e:
             safe_log("기사 요약 실패", level="warning", error=str(e))
-            return ""
+            return result
 
-    def _generate_overall_summary(self, articles: List[Dict], keyword: str, sentiment_distribution: Dict) -> str:
-        """전체 기사에 대한 종합 요약 생성"""
+    def _generate_overall_summary(self, articles: List[Dict], keyword: str, sentiment_distribution: Dict) -> Dict[str, Any]:
+        """
+        전체 기사에 대한 종합 요약 생성
+        
+        Returns:
+            {"summary": "요약 텍스트", "usage": {"prompt_tokens": N, "completion_tokens": N, "total_tokens": N}}
+        """
+        result = {"summary": "", "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}
+        
         if not OPENAI_AVAILABLE or not self.openai_api_key:
-            return ""
+            return result
         
         try:
             client = OpenAI(api_key=self.openai_api_key)
@@ -847,10 +948,20 @@ class NewsAnalysisAgent:
                 temperature=0.3
             )
             
-            return response.choices[0].message.content.strip()
+            result["summary"] = response.choices[0].message.content.strip()
+            
+            # 토큰 사용량 추출
+            if response.usage:
+                result["usage"] = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+            
+            return result
         except Exception as e:
             safe_log("종합 요약 생성 실패", level="warning", error=str(e))
-            return ""
+            return result
 
     def get_conversation_history(self) -> List[Dict]:
         """대화 히스토리 반환"""

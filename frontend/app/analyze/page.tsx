@@ -14,6 +14,13 @@ interface TimingInfo {
   total_time: number;
 }
 
+interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost: number;
+}
+
 interface AnalysisData {
   session_id: number;
   keyword: string;
@@ -45,6 +52,7 @@ interface AnalysisData {
   }>;
   overall_summary?: string;
   timing?: TimingInfo;
+  token_usage?: TokenUsage;
   created_at: string;
   completed_at?: string;
 }
@@ -276,33 +284,76 @@ export default function AnalyzePage() {
           </div>
         </div>
 
-        {/* Performance Timing Info */}
-        {analysisData.timing && (
+        {/* Performance & Usage Info */}
+        {(analysisData.timing || analysisData.token_usage) && (
           <div className="card p-4 mb-6 bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200">
-            <h3 className="text-sm font-semibold mb-3 text-gray-700 flex items-center">
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              성능 측정
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                <div className="text-2xl font-bold text-blue-600">{analysisData.timing.crawling_time}s</div>
-                <div className="text-xs text-gray-500 mt-1">🕷️ 크롤링</div>
-              </div>
-              <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                <div className="text-2xl font-bold text-green-600">{analysisData.timing.sentiment_time}s</div>
-                <div className="text-xs text-gray-500 mt-1">💭 감성 분석</div>
-              </div>
-              <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                <div className="text-2xl font-bold text-purple-600">{analysisData.timing.summary_time}s</div>
-                <div className="text-xs text-gray-500 mt-1">📝 요약 생성</div>
-              </div>
-              <div className="text-center p-3 bg-white rounded-lg shadow-sm border-2 border-indigo-200">
-                <div className="text-2xl font-bold text-indigo-600">{analysisData.timing.total_time}s</div>
-                <div className="text-xs text-gray-500 mt-1">⏱️ 총 소요 시간</div>
-              </div>
-            </div>
+            {/* Timing Info */}
+            {analysisData.timing && (
+              <>
+                <h3 className="text-sm font-semibold mb-3 text-gray-700 flex items-center">
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  성능 측정
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                    <div className="text-2xl font-bold text-blue-600">{analysisData.timing.crawling_time}s</div>
+                    <div className="text-xs text-gray-500 mt-1">🕷️ 크롤링</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                    <div className="text-2xl font-bold text-green-600">{analysisData.timing.sentiment_time}s</div>
+                    <div className="text-xs text-gray-500 mt-1">💭 감성 분석</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                    <div className="text-2xl font-bold text-purple-600">{analysisData.timing.summary_time}s</div>
+                    <div className="text-xs text-gray-500 mt-1">📝 요약 생성</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm border-2 border-indigo-200">
+                    <div className="text-2xl font-bold text-indigo-600">{analysisData.timing.total_time}s</div>
+                    <div className="text-xs text-gray-500 mt-1">⏱️ 총 소요 시간</div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Token Usage Info */}
+            {analysisData.token_usage && analysisData.token_usage.total_tokens > 0 && (
+              <>
+                <h3 className="text-sm font-semibold mb-3 text-gray-700 flex items-center">
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  LLM 토큰 사용량
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                    <div className="text-xl font-bold text-amber-600">
+                      {analysisData.token_usage.prompt_tokens.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">📥 입력 토큰</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                    <div className="text-xl font-bold text-teal-600">
+                      {analysisData.token_usage.completion_tokens.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">📤 출력 토큰</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                    <div className="text-xl font-bold text-orange-600">
+                      {analysisData.token_usage.total_tokens.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">🔢 총 토큰</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm border-2 border-green-200">
+                    <div className="text-xl font-bold text-green-600">
+                      ${analysisData.token_usage.estimated_cost.toFixed(4)}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">💵 예상 비용</div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
