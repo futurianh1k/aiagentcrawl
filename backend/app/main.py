@@ -7,8 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine
-from app.models.database import Base
-from app.api.routes import agents, analysis, media
+from app.models.database import Base, ImageSearchSession, ImageSearchResult
+from app.api.routes import agents, analysis, media, image_search
 
 # 데이터베이스 테이블 생성
 Base.metadata.create_all(bind=engine)
@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
 app.include_router(media.router, prefix="/api/media", tags=["media"])
+app.include_router(image_search.router, prefix="/api/image-search", tags=["image-search"])
 
 @app.get("/")
 async def root():

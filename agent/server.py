@@ -8,7 +8,7 @@ Agent를 독립적인 서비스로 실행하기 위한 간단한 HTTP 서버
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -16,24 +16,28 @@ from pydantic import BaseModel
 from common.config import get_config
 from common.utils import safe_log, validate_input
 from .news_agent import NewsAnalysisAgent
+from .tools.image_searcher import ImageSearchTool
 
 # Agent 인스턴스 (전역)
 agent_instance: NewsAnalysisAgent = None
+image_search_tool: ImageSearchTool = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """애플리케이션 생명주기 관리 (startup/shutdown)"""
     # Startup
-    global agent_instance
+    global agent_instance, image_search_tool
     try:
         config = get_config()
         agent_instance = NewsAnalysisAgent(config.get_openai_key())
+        image_search_tool = ImageSearchTool()
         safe_log("Agent 서비스 시작", level="info")
     except Exception as e:
         safe_log("Agent 초기화 실패 (계속 진행)", level="warning", error=str(e))
         # Agent 초기화 실패해도 서버는 시작 (analyze_news_async는 작동 가능)
         agent_instance = None
+        image_search_tool = None
     
     yield
     
@@ -63,6 +67,16 @@ class AnalyzeRequest(BaseModel):
     keyword: str
     sources: List[str] = ["네이버"]
     max_articles: int = 10
+
+
+class ImageSearchRequest(BaseModel):
+    """이미지 검색 요청 모델"""
+    query: str
+    query_type: str = "text"  # text, image, mixed
+    search_operator: str = "AND"  # AND, OR
+    max_results: int = 20
+    sample_image_url: Optional[str] = None
+    sample_image_path: Optional[str] = None
 
 
 @app.get("/health")
@@ -111,6 +125,33 @@ async def analyze_sentiment_query(query: str) -> str:
     except Exception as e:
         safe_log("감성 분석 오류", level="error", error=str(e))
         raise HTTPException(status_code=500, detail=f"분석 중 오류: {str(e)}")
+
+
+@app.post("/search-images")
+async def search_images(request: ImageSearchRequest) -> Dict[str, Any]:
+    """이미지 검색 실행"""
+    if not image_search_tool:
+        raise HTTPException(status_code=503, detail="이미지 검색 Tool이 초기화되지 않았습니다.")
+
+    try:
+        results = await image_search_tool.search_images(
+            query=request.query,
+            search_operator=request.search_operator,
+            max_results=request.max_results,
+            sample_image_url=request.sample_image_url,
+            sample_image_path=request.sample_image_path
+        )
+        
+        return {
+            "query": request.query,
+            "query_type": request.query_type,
+            "search_operator": request.search_operator,
+            "total_results": len(results),
+            "results": results
+        }
+    except Exception as e:
+        safe_log("이미지 검색 오류", level="error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"이미지 검색 중 오류: {str(e)}")
 
 
 if __name__ == "__main__":
