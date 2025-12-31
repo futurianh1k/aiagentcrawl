@@ -96,3 +96,47 @@ class UsageStatsResponse(BaseModel):
     free_credit_limit: float = Field(default=5.0, description="무료 크레딧 한도 (USD)")
     remaining_credit: float = Field(default=5.0, description="잔여 크레딧 (USD)")
     usage_percentage: float = Field(default=0.0, description="사용률 (%)")
+
+
+# ============================================================================
+# 이미지 검색 관련 스키마
+# ============================================================================
+
+class ImageSearchRequest(BaseModel):
+    """이미지 검색 요청 스키마"""
+    query: str = Field(..., min_length=1, max_length=500, description="검색 쿼리 (프롬프트)")
+    query_type: str = Field(default="text", description="검색 타입: text, image, mixed")
+    search_operator: str = Field(default="AND", description="검색 연산자: AND, OR")
+    max_results: int = Field(default=20, ge=1, le=100, description="최대 결과 수")
+    sample_image_url: Optional[str] = Field(default=None, description="샘플 이미지 URL (이미지 검색 시)")
+    sample_image_path: Optional[str] = Field(default=None, description="샘플 이미지 로컬 경로 (이미지 검색 시)")
+
+
+class ImageSearchResultData(BaseModel):
+    """이미지 검색 결과 데이터 스키마"""
+    id: int
+    image_url: str
+    thumbnail_url: Optional[str]
+    image_path: Optional[str]
+    title: Optional[str]
+    source_url: Optional[str]
+    source_site: Optional[str]
+    width: Optional[int]
+    height: Optional[int]
+    file_size: Optional[int]
+    mime_type: Optional[str]
+    similarity_score: Optional[float]
+    display_order: int
+
+
+class ImageSearchResponse(BaseModel):
+    """이미지 검색 응답 스키마"""
+    session_id: int = Field(..., description="검색 세션 ID")
+    query: str = Field(..., description="검색 쿼리")
+    query_type: str = Field(..., description="검색 타입")
+    search_operator: str = Field(..., description="검색 연산자")
+    status: str = Field(..., description="검색 상태")
+    total_results: int = Field(default=0, description="총 결과 수")
+    results: List[ImageSearchResultData] = Field(default=[], description="검색 결과 목록")
+    created_at: datetime = Field(..., description="생성 시간")
+    completed_at: Optional[datetime] = Field(default=None, description="완료 시간")

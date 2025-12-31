@@ -162,3 +162,61 @@ class ArticleMedia(Base):
     
     # 관계 설정
     article = relationship("Article", back_populates="media")
+
+
+class ImageSearchSession(Base):
+    """이미지 검색 세션 모델"""
+    __tablename__ = "image_search_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    query = Column(String(500), nullable=False, index=True)  # 검색 쿼리 (프롬프트)
+    query_type = Column(String(20), default="text")  # text, image, mixed
+    search_operator = Column(String(10), default="AND")  # AND, OR
+    status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    total_results = Column(Integer, default=0)
+    error_message = Column(Text)
+    
+    # 이미지 업로드 정보 (샘플 이미지 검색 시)
+    sample_image_url = Column(String(1000))  # 업로드된 샘플 이미지 URL
+    sample_image_path = Column(String(500))  # 로컬 저장 경로
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True))
+
+    # 관계 설정
+    results = relationship("ImageSearchResult", back_populates="session", cascade="all, delete-orphan")
+
+
+class ImageSearchResult(Base):
+    """이미지 검색 결과 모델"""
+    __tablename__ = "image_search_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("image_search_sessions.id"), nullable=False, index=True)
+    
+    # 이미지 URL 및 저장 정보
+    image_url = Column(String(1000), nullable=False)  # 원본 이미지 URL
+    thumbnail_url = Column(String(1000))  # 썸네일 URL
+    image_path = Column(String(500))  # 로컬 저장 경로 (선택적)
+    
+    # 이미지 메타데이터
+    title = Column(String(500))  # 이미지 제목 또는 설명
+    source_url = Column(String(1000))  # 이미지가 있는 페이지 URL
+    source_site = Column(String(100))  # 출처 사이트 (Google, Naver 등)
+    
+    # 이미지 정보
+    width = Column(Integer)  # 이미지 너비 (픽셀)
+    height = Column(Integer)  # 이미지 높이 (픽셀)
+    file_size = Column(Integer)  # 파일 크기 (bytes)
+    mime_type = Column(String(100))  # MIME 타입 (image/jpeg, image/png 등)
+    
+    # 유사도 점수 (샘플 이미지 검색 시)
+    similarity_score = Column(Float)  # 0.0 ~ 1.0
+    
+    # 순서 (검색 결과 순위)
+    display_order = Column(Integer, default=0)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # 관계 설정
+    session = relationship("ImageSearchSession", back_populates="results")

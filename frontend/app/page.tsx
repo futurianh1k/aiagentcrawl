@@ -3,6 +3,10 @@
 import { useState } from 'react';
 import LandingSimple from '@/components/landing/LandingSimple';
 import LandingGradient from '@/components/landing/LandingGradient';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import SearchForm from '@/components/SearchForm';
+import { Search, TrendingUp, BarChart3, Users, Image as ImageIcon } from 'lucide-react';
 
 export default function HomePage() {
   const [theme, setTheme] = useState<'simple' | 'gradient'>('simple');
@@ -29,6 +33,19 @@ export default function HomePage() {
             <span className="font-semibold hidden sm:inline">
               {theme === 'simple' ? 'Gradient Theme' : 'Simple Theme'}
             </span>
+          </div>
+
+          <SearchForm onAnalyze={handleAnalysis} isLoading={isAnalyzing} />
+          
+          {/* Image Search Link */}
+          <div className="mt-8 text-center">
+            <Link
+              href="/image-search"
+              className="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              <ImageIcon className="w-5 h-5 mr-2" />
+              이미지 검색하기
+            </Link>
           </div>
         </div>
       </button>
