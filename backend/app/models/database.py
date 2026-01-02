@@ -3,31 +3,68 @@
 SQLAlchemy ORM 모델들
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Float, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, Float, ForeignKey, Boolean, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
+
+
+class User(Base):
+    """사용자 모델 - 한국 정부 IT 보안 규정 준수"""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(100))
+
+    # 계정 상태
+    is_active = Column(Boolean, default=True)  # 계정 활성화 여부
+    is_verified = Column(Boolean, default=False)  # 이메일 인증 여부
+    is_superuser = Column(Boolean, default=False)  # 관리자 여부
+
+    # 보안 관련
+    failed_login_attempts = Column(Integer, default=0)  # 로그인 실패 횟수
+    locked_until = Column(DateTime(timezone=True), nullable=True)  # 계정 잠금 시간
+    last_login_at = Column(DateTime(timezone=True), nullable=True)  # 마지막 로그인 시간
+    password_changed_at = Column(DateTime(timezone=True), server_default=func.now())  # 비밀번호 변경 시간
+
+    # 이메일 인증
+    email_verification_token = Column(String(255), nullable=True)  # 이메일 인증 토큰
+    email_verification_token_expires = Column(DateTime(timezone=True), nullable=True)  # 토큰 만료 시간
+
+    # 타임스탬프
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # 인덱스 추가 (보안 및 성능 향상)
+    __table_args__ = (
+        Index('idx_email_active', 'email', 'is_active'),
+        Index('idx_locked_until', 'locked_until'),
+    )
 
 class AnalysisSession(Base):
     """분석 세션 모델"""
     __tablename__ = "analysis_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)  # NULL = 비로그인 사용자
     keyword = Column(String(255), nullable=False, index=True)
     sources = Column(Text)  # JSON 문자열로 저장
     status = Column(String(50), default="pending")  # pending, processing, completed, failed
     overall_summary = Column(Text)  # 세션 전체 요약본
-    
+
     # LLM 토큰 사용량 추적
     prompt_tokens = Column(Integer, default=0)  # 프롬프트 토큰
     completion_tokens = Column(Integer, default=0)  # 완료 토큰
     total_tokens = Column(Integer, default=0)  # 총 토큰
     estimated_cost = Column(Float, default=0.0)  # 예상 비용 (USD)
-    
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True))
 
     # 관계 설정
+    user = relationship("User", backref="analysis_sessions")
     articles = relationship("Article", back_populates="session")
 
 class Article(Base):
