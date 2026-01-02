@@ -91,7 +91,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
     } catch (error) {
       console.error('Failed to refresh user:', error);
-      logout();
+      // 토큰 갱신 시도
+      try {
+        const refreshToken = localStorage.getItem('refresh_token');
+        if (refreshToken) {
+          const tokenData = await authApi.refreshToken(refreshToken);
+          localStorage.setItem('access_token', tokenData.access_token);
+          localStorage.setItem('refresh_token', tokenData.refresh_token);
+          setToken(tokenData.access_token);
+          const userData = await authApi.getCurrentUser(tokenData.access_token);
+          setUser(userData);
+        } else {
+          logout();
+        }
+      } catch (refreshError) {
+        console.error('Failed to refresh token:', refreshError);
+        logout();
+      }
     }
   };
 

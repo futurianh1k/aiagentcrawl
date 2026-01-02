@@ -9,9 +9,14 @@ const api = axios.create({
   },
 });
 
-// 요청 인터셉터
+// 요청 인터셉터 - 토큰 자동 추가
 api.interceptors.request.use(
   (config) => {
+    // 로컬 스토리지에서 토큰 가져오기
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
     return config;
   },
@@ -21,13 +26,56 @@ api.interceptors.request.use(
   }
 );
 
-// 응답 인터셉터
+// 응답 인터셉터 - 토큰 자동 갱신
 api.interceptors.response.use(
   (response: AxiosResponse) => {
     console.log(`API Response: ${response.status} ${response.config.url}`);
     return response;
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
+    // 401 에러이고 토큰 갱신이 아직 시도되지 않은 경우
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const refreshToken = localStorage.getItem('refresh_token');
+        if (!refreshToken) {
+          throw new Error('No refresh token');
+        }
+
+        // 토큰 갱신 시도
+        const response = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/auth/refresh`,
+          { refresh_token: refreshToken }
+        );
+
+        const { access_token, refresh_token: newRefreshToken } = response.data;
+
+        // 새 토큰 저장
+        localStorage.setItem('access_token', access_token);
+        if (newRefreshToken) {
+          localStorage.setItem('refresh_token', newRefreshToken);
+        }
+
+        // 원래 요청 재시도
+        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        // 토큰 갱신 실패 시 로그아웃 처리
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        
+        // 로그인 페이지로 리다이렉트 (브라우저 환경에서만)
+        if (typeof window !== 'undefined') {
+          window.location.href = '/auth/login';
+        }
+        
+        return Promise.reject(refreshError);
+      }
+    }
+
     console.error('API Response Error:', error.response?.data || error.message);
     return Promise.reject(error);
   }

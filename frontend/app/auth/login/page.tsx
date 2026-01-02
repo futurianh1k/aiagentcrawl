@@ -21,7 +21,9 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.push('/dashboard');
+      // 로그인 성공 후 이전 페이지로 이동하거나 대시보드로 이동
+      const returnUrl = new URLSearchParams(window.location.search).get('return');
+      router.push(returnUrl || '/dashboard');
     } catch (err: any) {
       setError(err.message || '로그인에 실패했습니다.');
     } finally {
